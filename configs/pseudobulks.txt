@@ -1,0 +1,6 @@
+bundle_sheath
+epidermis
+guard
+mesophyll
+phloem
+xylem
