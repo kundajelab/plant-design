@@ -1,0 +1,1 @@
+wget https://jaspar.elixir.no/download/data/2026/CORE/JASPAR2026_CORE_plants_non-redundant_pfms_meme.txt -P ../../data/
