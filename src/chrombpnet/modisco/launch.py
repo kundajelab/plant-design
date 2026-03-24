@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Submit SLURM jobs to run tf-modisco on ChromBPNet attributions.
+"""Submit SLURM jobs to run tf-modisco motifs on ChromBPNet attributions.
 
 Reads pseudobulks from configs/pseudobulks.txt and submits one sbatch job per
-(pseudobulk, model_type, head) triple via `modisco motifs` and `modisco report`.
+(pseudobulk, model_type, head) triple via `modisco motifs`.
 
-Jobs are skipped if the modisco output already exists or if the required
-attribution/OHE npz files are missing (run attribute/launch.sh first).
+Jobs are skipped if the modisco h5 output already exists or if the required
+attribution/OHE npz files are missing (run attribute/launch.py first).
+Run launch_report.py afterwards to generate HTML reports from the h5 files.
 
 Usage:
     python src/chrombpnet/modisco/launch.py                          # all pseudobulks, both model types, both heads
@@ -89,7 +90,7 @@ def main():
     pseudobulks = PSEUDOBULKS_PATH.read_text().splitlines()
     pseudobulks = [p for p in pseudobulks if p.strip()]
 
-    attr_dir = REPO_ROOT / "attributions"
+    attr_dir = REPO_ROOT / "attributions" / "chrombpnet"
     out_dir = REPO_ROOT / "modisco" / "chrombpnet"
     log_dir = REPO_ROOT / "logs" / "chrombpnet_modisco"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -126,12 +127,6 @@ def main():
                     f" -o {out_h5}"
                     f" -n {args.n_seqlets} -l {args.leiden} -w {args.window} -v"
                 )
-                modisco_report_cmd = (
-                    f"modisco report"
-                    f" -i {out_h5}"
-                    f" -o {f'{pseudobulk}_{model_type}_{head}.modisco'}"
-                    f" -m {JASPAR_PATH}"
-                )
 
                 sbatch_script = textwrap.dedent(f"""\
                     #!/bin/bash -l
@@ -164,7 +159,6 @@ def main():
                     mkdir -p {out_dir}
                     cd {out_dir}
                     time {modisco_motifs_cmd}
-                    time {modisco_report_cmd}
                 """)
 
                 if args.dry_run:

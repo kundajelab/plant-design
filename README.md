@@ -30,9 +30,9 @@ Also note that TF installation is a bit of a pain. These things have worked for 
 All upstream and downstream processing from model training requires a separate PyTorch environment, as TensorFlow 2.8 and modern PyTorch are not compatible in the same environment:
 
 ```bash
-mamba create -n torch python=3.13
+mamba create -n torch python=3.14
 mamba activate torch
-pip install bpnetlite tangermeme tqdm bam2bw ledidi
+pip install bpnet-lite tangermeme tqdm bam2bw ledidi
 ```
 
 ## Pipeline

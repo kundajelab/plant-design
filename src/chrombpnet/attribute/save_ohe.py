@@ -65,7 +65,7 @@ def main():
     )
 
     # Output directory
-    out_dir = REPO_ROOT / "attributions"
+    out_dir = REPO_ROOT / "attributions" / "chrombpnet"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Save OHE
