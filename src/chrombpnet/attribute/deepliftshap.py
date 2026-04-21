@@ -23,6 +23,10 @@ from tangermeme.io import extract_loci
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
+DA_BEDS = {
+    "tau": REPO_ROOT / "data" / "peaks" / "differential_accessibility" / "da_peaks_tau.bed",
+    "pairwise": REPO_ROOT / "data" / "peaks" / "differential_accessibility" / "da_peaks_pairwise.bed",
+}
 
 
 def main():
@@ -50,9 +54,39 @@ def main():
         choices=["profile", "count"],
         help="type of prediction to make (profile or count)",
     )
+    parser.add_argument(
+        "--da-peaks",
+        type=str,
+        choices=["tau", "pairwise"],
+        default=None,
+        help="Run attributions on DA peaks instead of all cell-type peaks. "
+             "'tau' uses da_peaks_tau.bed; 'pairwise' uses da_peaks_pairwise.bed. "
+             "Requires differential_accessibility.py to have been run first.",
+    )
     parser.add_argument("-b", "--batch-size", type=int, default=64)
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument(
+        "--finetuned",
+        action="store_true",
+        help="Use finetuned models instead of base torch/ models",
+    )
+    parser.add_argument(
+        "--da-fraction",
+        type=float,
+        default=0.5,
+        help="DA fraction used during finetuning; selects model/output subdirectory (default: 0.5)",
+    )
     args = parser.parse_args()
+
+    if args.finetuned and args.model_type == "bias":
+        print(
+            "Error: bias model is not saved during finetuning (bias is frozen). "
+            "Use --model-type accessibility with --finetuned.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    fine_tag = "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
 
     # Load chrom splits
     with open(CHROM_SPLITS_PATH, "r") as f:
@@ -60,14 +94,25 @@ def main():
     n_folds = len(chrom_splits)
 
     # Construct data paths and verify that they exist.
-    peaks_path = str(REPO_ROOT / f"data/peaks/{args.pseudobulk}_peaks_ACGT.narrowPeak")
-    for path, label in [(peaks_path, "peaks")]:
-        if not Path(path).exists():
-            print(f"Error: {label} not found: {path}", file=sys.stderr)
+    if args.da_peaks is not None:
+        da_bed = DA_BEDS[args.da_peaks]
+        if not da_bed.exists():
+            print(
+                f"Error: {da_bed.name} not found: {da_bed}. "
+                "Run differential_accessibility.py first.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        peaks_path = str(da_bed)
+    else:
+        peaks_path = str(REPO_ROOT / f"data/peaks/{args.pseudobulk}_peaks_ACGT.narrowPeak")
+        if not Path(peaks_path).exists():
+            print(f"Error: peaks not found: {peaks_path}", file=sys.stderr)
             sys.exit(1)
 
     # Resolve model directory and verify that all models exist
-    model_dir = REPO_ROOT / "models" / args.pseudobulk / "torch"
+    model_subdir = fine_tag if args.finetuned else "torch"
+    model_dir = REPO_ROOT / "models" / args.pseudobulk / model_subdir
     model_paths = [
         model_dir / f"{args.pseudobulk}_f{fold}.{args.model_type}.torch"
         for fold in range(n_folds)
@@ -129,11 +174,13 @@ def main():
         torch.cuda.empty_cache()
 
     # Output directory
-    out_dir = REPO_ROOT / "attributions" / "chrombpnet"
+    out_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
+    out_dir = REPO_ROOT / "attributions" / out_subdir
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Save attributions
-    out_path = out_dir / f"{args.pseudobulk}_{args.model_type}_{args.head}.npz"
+    da_suffix = f"_da_{args.da_peaks}" if args.da_peaks is not None else ""
+    out_path = out_dir / f"{args.pseudobulk}_{args.model_type}_{args.head}{da_suffix}.npz"
     out_dir.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(out_path, np.stack(attributions).mean(axis=0))
     print(f"\nAttributions saved to {out_path}")

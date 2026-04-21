@@ -9,21 +9,12 @@ for pseudobulk in "bundle_sheath" "epidermis" "guard" "mesophyll" "phloem" "xyle
     echo time python save_ohe.py -v -p ${pseudobulk}
 done | parallel
 
-for pseudobulk in "bundle_sheath" "epidermis" "guard" "mesophyll" "phloem"; do
-    for head in "profile" "count"; do
-        echo time python deepliftshap.py -v -p ${pseudobulk} -m bias --head ${head} -b 256
-    done
-done | simple_gpu_scheduler --gpus 0 1 2 3
+time python launch.py
 
-for pseudobulk in "mesophyll" "phloem" "xylem"; do
-    for head in "profile" "count"; do
-        echo time python deepliftshap.py -v -p ${pseudobulk} -m accessibility --head ${head} -b 32
-    done
-done | \
-    simple_gpu_scheduler --gpus MIG-166d7783-762d-5f61-b31c-549eb4e0fba0 MIG-f80e9374-504a-571b-bac0-6fb00750db4c MIG-40f43250-998e-586a-ac37-d6520e92590f
+time python launch.py --finetuned --da-fraction 0.8
+time python launch.py --da-peaks tau --model accessibility --time 6:00:00
+time python launch.py --da-peaks pairwise --model accessibility --time 6:00:00
 
-
-pseudobulk="xylem"
-for head in "profile" "count"; do
-    time python deepliftshap.py -v -p ${pseudobulk} -m bias --head ${head} -b 256
-done
+time python launch.py --da-peaks pairwise --finetuned --da-fraction 0.8 --time 6:00:00
+time python launch.py --da-peaks tau --finetuned --da-fraction 0.8 --time 6:00:00
+time python launch.py --da-peaks pairwise --finetuned --da-fraction 0.8 --time 6:00:00

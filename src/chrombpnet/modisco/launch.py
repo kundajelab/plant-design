@@ -9,10 +9,14 @@ attribution/OHE npz files are missing (run attribute/launch.py first).
 Run launch_report.py afterwards to generate HTML reports from the h5 files.
 
 Usage:
-    python src/chrombpnet/modisco/launch.py                          # all pseudobulks, both model types, both heads
-    python src/chrombpnet/modisco/launch.py --dry-run                # print sbatch scripts without submitting
-    python src/chrombpnet/modisco/launch.py --head count             # count head only
-    python src/chrombpnet/modisco/launch.py --model-type bias        # bias model only
+    python src/chrombpnet/modisco/launch.py                                    # all pseudobulks, both model types, both heads
+    python src/chrombpnet/modisco/launch.py --dry-run                          # print sbatch scripts without submitting
+    python src/chrombpnet/modisco/launch.py --head count                       # count head only
+    python src/chrombpnet/modisco/launch.py --model-type bias                  # bias model only
+    python src/chrombpnet/modisco/launch.py --finetuned                        # finetuned model attributions (50:50 DA split)
+    python src/chrombpnet/modisco/launch.py --finetuned --da-fraction 0.8     # finetuned model attributions (80:20 DA split)
+    python src/chrombpnet/modisco/launch.py --da-peaks tau                    # modisco on tau-specific DA peaks only
+    python src/chrombpnet/modisco/launch.py --da-peaks pairwise               # modisco on pairwise DA peaks only
     python src/chrombpnet/modisco/launch.py --time 6-23:00:00 --mem 64G
 """
 
@@ -52,6 +56,24 @@ def main():
         metavar="MODEL_TYPE",
         help="model type(s) to run; repeatable (default: bias accessibility)",
     )
+    parser.add_argument(
+        "--finetuned",
+        action="store_true",
+        help="Use attributions from finetuned models instead of base models",
+    )
+    parser.add_argument(
+        "--da-fraction",
+        type=float,
+        default=0.5,
+        help="DA fraction used during finetuning; selects attribution subdirectory (default: 0.5)",
+    )
+    parser.add_argument(
+        "--da-peaks",
+        type=str,
+        choices=["tau", "pairwise"],
+        default=None,
+        help="Run modisco on DA-peaks-only attributions (default: all peaks)",
+    )
     # Modisco parameters
     parser.add_argument(
         "-n",
@@ -71,8 +93,8 @@ def main():
         "-w",
         "--window",
         type=int,
-        default=1000,
-        help="window to get seqlets from (default: 1000)",
+        default=400,
+        help="window to get seqlets from (default: 400)",
     )
     # SLURM resource flags
     parser.add_argument("--partition", type=str, default="normal,akundaje,owners")
@@ -86,12 +108,27 @@ def main():
         args.model_type if args.model_type is not None else ["bias", "accessibility"]
     )
 
+    fine_tag = "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
+    attr_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
+    modisco_subdir = attr_subdir  # mirrors attribution directory naming
+    da_suffix = f"_da_{args.da_peaks}" if args.da_peaks is not None else ""
+
+    if args.finetuned and "bias" in model_types:
+        print(
+            "Warning: bias model is not saved during finetuning; skipping bias model type.",
+            file=sys.stderr,
+        )
+        model_types = [m for m in model_types if m != "bias"]
+        if not model_types:
+            sys.exit(0)
+
     # Load pseudobulk list
     pseudobulks = PSEUDOBULKS_PATH.read_text().splitlines()
     pseudobulks = [p for p in pseudobulks if p.strip()]
 
-    attr_dir = REPO_ROOT / "attributions" / "chrombpnet"
-    out_dir = REPO_ROOT / "modisco" / "chrombpnet"
+    ohe_dir = REPO_ROOT / "attributions" / "chrombpnet"   # OHE always here
+    attr_dir = REPO_ROOT / "attributions" / attr_subdir
+    out_dir = REPO_ROOT / "modisco" / modisco_subdir
     log_dir = REPO_ROOT / "logs" / "chrombpnet_modisco"
     log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -99,26 +136,27 @@ def main():
     skipped_done = 0
     skipped_no_attr = 0
     for pseudobulk in pseudobulks:
-        # OHE sequences file is shared across model types and heads
-        ohe_path = attr_dir / f"{pseudobulk}_ohe.npz"
+        # OHE sequences file is always in attributions/chrombpnet/
+        ohe_path = ohe_dir / f"{pseudobulk}_ohe.npz"
         if not ohe_path.exists():
             skipped_no_attr += len(model_types) * len(heads)
             continue
 
         for model_type in model_types:
             for head in heads:
-                attr_path = attr_dir / f"{pseudobulk}_{model_type}_{head}.npz"
+                attr_path = attr_dir / f"{pseudobulk}_{model_type}_{head}{da_suffix}.npz"
                 if not attr_path.exists():
                     skipped_no_attr += 1
                     continue
 
                 # Skip if modisco output already exists
-                out_h5 = out_dir / f"{pseudobulk}_{model_type}_{head}.modisco.h5"
+                out_h5 = out_dir / f"{pseudobulk}_{model_type}_{head}{da_suffix}.modisco.h5"
                 if out_h5.exists():
                     skipped_done += 1
                     continue
 
-                job_name = f"modisco_{pseudobulk}_{model_type}_{head}"
+                tag = f"_{fine_tag}" if args.finetuned else ""
+                job_name = f"modisco{tag}{da_suffix}_{pseudobulk}_{model_type}_{head}"
 
                 modisco_motifs_cmd = (
                     f"modisco motifs"

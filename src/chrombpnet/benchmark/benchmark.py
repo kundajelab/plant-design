@@ -6,6 +6,7 @@ and reports profile and count prediction metrics.
 
 Usage:
     python src/chrombpnet/benchmark/benchmark.py -p mesophyll
+    python src/chrombpnet/benchmark/benchmark.py -p mesophyll --finetuned
 """
 
 import argparse
@@ -44,7 +45,23 @@ def main():
     )
     parser.add_argument("-b", "--batch-size", type=int, default=64)
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument(
+        "--finetuned",
+        action="store_true",
+        help="Use finetuned models instead of base torch/ models",
+    )
+    parser.add_argument(
+        "--da-fraction",
+        type=float,
+        default=0.5,
+        help="DA fraction used during finetuning; selects model/output subdirectory (default: 0.5)",
+    )
     args = parser.parse_args()
+
+    fine_tag = "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
+    model_subdir = fine_tag if args.finetuned else "torch"
+    metrics_subdir = fine_tag if args.finetuned else "chrombpnet"
+    predictions_subdir = fine_tag if args.finetuned else "chrombpnet"
 
     # Load chrom splits
     with open(CHROM_SPLITS_PATH, "r") as f:
@@ -64,7 +81,7 @@ def main():
         REPO_ROOT
         / "models"
         / args.pseudobulk
-        / "torch"
+        / model_subdir
         / f"{args.pseudobulk}_f{fold}.torch"
         for fold in range(n_folds)
     ]
@@ -190,7 +207,7 @@ def main():
             "counts_spearman": counts_spearman_all,
         },
     }
-    metrics_dir = REPO_ROOT / "performance_metrics" / "chrombpnet"
+    metrics_dir = REPO_ROOT / "performance_metrics" / metrics_subdir
     metrics_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = metrics_dir / f"{args.pseudobulk}.json"
     with open(metrics_path, "w") as f:
@@ -198,7 +215,7 @@ def main():
     print(f"\nMetrics saved to {metrics_path}")
 
     if args.save_output:
-        output_dir = REPO_ROOT / "predictions" / "chrombpnet"
+        output_dir = REPO_ROOT / "predictions" / predictions_subdir
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / f"{args.pseudobulk}.npz"
         scaled_preds = {

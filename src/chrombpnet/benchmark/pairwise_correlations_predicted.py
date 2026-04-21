@@ -5,8 +5,10 @@ to its held-out test chromosomes, so every peak is predicted out-of-fold.
 
 Usage:
     python src/chrombpnet/benchmark/pairwise_correlations_predicted.py
+    python src/chrombpnet/benchmark/pairwise_correlations_predicted.py --finetuned
 """
 
+import argparse
 import json
 import sys
 import tempfile
@@ -60,6 +62,19 @@ def build_merged_union_peaks():
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--finetuned",
+        action="store_true",
+        help="Use finetuned models from models/{pseudobulk}/finetuned/ instead of torch/",
+    )
+    args = parser.parse_args()
+
+    model_subdir = "finetuned" if args.finetuned else "torch"
+    suffix = "_finetuned" if args.finetuned else ""
+
     with open(CHROM_SPLITS_PATH) as f:
         chrom_splits = json.load(f)
     n_folds = len(chrom_splits)
@@ -67,7 +82,7 @@ def main():
     # Verify models exist
     model_paths = {
         ps: [
-            REPO_ROOT / "models" / ps / "torch" / f"{ps}_f{fold}.torch"
+            REPO_ROOT / "models" / ps / model_subdir / f"{ps}_f{fold}.torch"
             for fold in range(n_folds)
         ]
         for ps in PSEUDOBULKS
@@ -100,10 +115,10 @@ def main():
         fold_mask = union[0].isin(test_chroms)
         fold_indices = union.index[fold_mask].tolist()
         if not fold_indices:
-            print(f"  No union peaks on test chroms, skipping.")
+            print("  No union peaks on test chroms, skipping.")
             continue
 
-        X, _ = extract_loci(
+        X, mask = extract_loci(
             loci=tmp_path,
             sequences=FASTA,
             chroms=test_chroms,
@@ -111,16 +126,18 @@ def main():
             out_window=OUT_WINDOW,
             ignore=list("QWERYUIOPSDFHJKLZXVBNM"),
             verbose=True,
+            return_mask=True,
         )
+        valid_fold_indices = [idx for idx, m in zip(fold_indices, mask.tolist()) if m]
 
         for j, ps in enumerate(PSEUDOBULKS):
             print(f"  Predicting {ps}...")
             model = torch.load(
                 model_paths[ps][fold], weights_only=False, map_location="cpu"
             )
-            pred = predict(model=model, X=X, device=device, batch_size=64)
+            pred = predict(model=model, X=X, device=device, batch_size=64, verbose=True)
             # pred[1] is log counts; exp to get counts
-            counts_pred[fold_indices, j] = torch.exp(pred[1]).squeeze().numpy()
+            counts_pred[valid_fold_indices, j] = torch.exp(pred[1]).squeeze().numpy()
 
     Path(tmp_path).unlink()
 
@@ -156,13 +173,13 @@ def main():
         "pearson": pearson.to_dict(),
         "spearman": spearman.to_dict(),
     }
-    out_path = out_dir / "pairwise_correlations_predicted.json"
+    out_path = out_dir / f"pairwise_correlations_predicted{suffix}.json"
     with open(out_path, "w") as f:
         json.dump(results, f, indent=4)
     print(f"\nResults saved to {out_path}")
 
-    pearson.to_csv(out_dir / "pairwise_pearson_predicted.csv")
-    spearman.to_csv(out_dir / "pairwise_spearman_predicted.csv")
+    pearson.to_csv(out_dir / f"pairwise_pearson_predicted{suffix}.csv")
+    spearman.to_csv(out_dir / f"pairwise_spearman_predicted{suffix}.csv")
 
 
 if __name__ == "__main__":

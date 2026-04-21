@@ -1,0 +1,41 @@
+{
+    "pseudobulk": "mesophyll",
+    "per_fold": {
+        "0": {
+            "profile_pearson": 0.5315718650817871,
+            "profile_jsd": 0.32192012667655945,
+            "log_counts_pearson": 0.6641950011253357,
+            "counts_spearman": 0.6855579018592834
+        },
+        "1": {
+            "profile_pearson": 0.513158917427063,
+            "profile_jsd": 0.33572155237197876,
+            "log_counts_pearson": 0.5915093421936035,
+            "counts_spearman": 0.6112428903579712
+        },
+        "2": {
+            "profile_pearson": 0.529633641242981,
+            "profile_jsd": 0.33415716886520386,
+            "log_counts_pearson": 0.5685383081436157,
+            "counts_spearman": 0.6233076453208923
+        },
+        "3": {
+            "profile_pearson": 0.5272296667098999,
+            "profile_jsd": 0.32324448227882385,
+            "log_counts_pearson": 0.6609440445899963,
+            "counts_spearman": 0.6726014614105225
+        },
+        "4": {
+            "profile_pearson": 0.519153356552124,
+            "profile_jsd": 0.34353241324424744,
+            "log_counts_pearson": 0.5762808322906494,
+            "counts_spearman": 0.6001315712928772
+        }
+    },
+    "genome_wide": {
+        "profile_pearson": 0.5239243507385254,
+        "profile_jsd": 0.3318917453289032,
+        "log_counts_pearson": 0.5733585357666016,
+        "counts_spearman": 0.5906432271003723
+    }
+}
