@@ -16,7 +16,7 @@ Usage:
     python src/chrombpnet/modisco/launch.py --finetuned                        # finetuned model attributions (50:50 DA split)
     python src/chrombpnet/modisco/launch.py --finetuned --da-fraction 0.8     # finetuned model attributions (80:20 DA split)
     python src/chrombpnet/modisco/launch.py --da-peaks tau                    # modisco on tau-specific DA peaks only
-    python src/chrombpnet/modisco/launch.py --da-peaks pairwise               # modisco on pairwise DA peaks only
+    python src/chrombpnet/modisco/launch.py --da-peaks specific_union         # modisco on per-cell-type union DA peaks
     python src/chrombpnet/modisco/launch.py --time 6-23:00:00 --mem 64G
 """
 
@@ -24,11 +24,31 @@ import argparse
 import subprocess
 import sys
 import textwrap
+import zipfile
 from pathlib import Path
+
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "attribute"))
+from da_peaks import DA_PEAK_CHOICES, da_suffix, resolve_ohe_path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 PSEUDOBULKS_PATH = REPO_ROOT / "configs" / "pseudobulks.txt"
 JASPAR_PATH = REPO_ROOT / "data" / "JASPAR2026_CORE_plants_non-redundant_pfms_meme.txt"
+
+
+def first_array_rows(npz_path):
+    with zipfile.ZipFile(npz_path) as zf:
+        npy_name = next(name for name in zf.namelist() if name.endswith(".npy"))
+        with zf.open(npy_name) as npy:
+            version = np.lib.format.read_magic(npy)
+            if version == (1, 0):
+                shape, _, _ = np.lib.format.read_array_header_1_0(npy)
+            elif version == (2, 0):
+                shape, _, _ = np.lib.format.read_array_header_2_0(npy)
+            else:
+                shape, _, _ = np.lib.format.read_array_header_2_0(npy)
+    return shape[0]
 
 
 def main():
@@ -49,6 +69,7 @@ def main():
     )
     parser.add_argument(
         "--model-type",
+        "--model",
         type=str,
         action="append",
         choices=["bias", "accessibility"],
@@ -70,7 +91,7 @@ def main():
     parser.add_argument(
         "--da-peaks",
         type=str,
-        choices=["tau", "pairwise"],
+        choices=DA_PEAK_CHOICES,
         default=None,
         help="Run modisco on DA-peaks-only attributions (default: all peaks)",
     )
@@ -111,7 +132,7 @@ def main():
     fine_tag = "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
     attr_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
     modisco_subdir = attr_subdir  # mirrors attribution directory naming
-    da_suffix = f"_da_{args.da_peaks}" if args.da_peaks is not None else ""
+    suffix = da_suffix(args.da_peaks)
 
     if args.finetuned and "bias" in model_types:
         print(
@@ -126,7 +147,6 @@ def main():
     pseudobulks = PSEUDOBULKS_PATH.read_text().splitlines()
     pseudobulks = [p for p in pseudobulks if p.strip()]
 
-    ohe_dir = REPO_ROOT / "attributions" / "chrombpnet"   # OHE always here
     attr_dir = REPO_ROOT / "attributions" / attr_subdir
     out_dir = REPO_ROOT / "modisco" / modisco_subdir
     log_dir = REPO_ROOT / "logs" / "chrombpnet_modisco"
@@ -135,28 +155,38 @@ def main():
     submitted = 0
     skipped_done = 0
     skipped_no_attr = 0
+    skipped_mismatch = 0
     for pseudobulk in pseudobulks:
-        # OHE sequences file is always in attributions/chrombpnet/
-        ohe_path = ohe_dir / f"{pseudobulk}_ohe.npz"
+        # OHE sequences are shared across model variants but must match the loci set.
+        ohe_path = resolve_ohe_path(REPO_ROOT, pseudobulk, args.da_peaks)
         if not ohe_path.exists():
             skipped_no_attr += len(model_types) * len(heads)
             continue
 
         for model_type in model_types:
             for head in heads:
-                attr_path = attr_dir / f"{pseudobulk}_{model_type}_{head}{da_suffix}.npz"
+                attr_path = attr_dir / f"{pseudobulk}_{model_type}_{head}{suffix}.npz"
                 if not attr_path.exists():
                     skipped_no_attr += 1
                     continue
 
+                if first_array_rows(ohe_path) != first_array_rows(attr_path):
+                    skipped_mismatch += 1
+                    print(
+                        f"SKIP {pseudobulk}/{model_type}/{head}: OHE and attribution row counts differ "
+                        f"({ohe_path} vs {attr_path})",
+                        file=sys.stderr,
+                    )
+                    continue
+
                 # Skip if modisco output already exists
-                out_h5 = out_dir / f"{pseudobulk}_{model_type}_{head}{da_suffix}.modisco.h5"
+                out_h5 = out_dir / f"{pseudobulk}_{model_type}_{head}{suffix}.modisco.h5"
                 if out_h5.exists():
                     skipped_done += 1
                     continue
 
                 tag = f"_{fine_tag}" if args.finetuned else ""
-                job_name = f"modisco{tag}{da_suffix}_{pseudobulk}_{model_type}_{head}"
+                job_name = f"modisco{tag}{suffix}_{pseudobulk}_{model_type}_{head}"
 
                 modisco_motifs_cmd = (
                     f"modisco motifs"
@@ -221,6 +251,7 @@ def main():
     total = len(pseudobulks) * len(model_types) * len(heads)
     print(
         f"\n{action} {submitted} jobs, skipped {skipped_no_attr} missing attributions, "
+        f"skipped {skipped_mismatch} row-count mismatches, "
         f"skipped {skipped_done} already done ({total} total)"
     )
 

@@ -27,6 +27,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from tangermeme.io import extract_loci
+from write_pairwise_higher_beds import write_da_set_beds
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
@@ -314,6 +315,7 @@ def main():
     print(
         f"  Pairwise BED file saved to {pairwise_bed_path} ({len(sig)} peaks, |log2FC| >= {args.log2fc_threshold})"
     )
+    write_da_set_beds(main_path, out_dir, args.log2fc_threshold, args.tau_threshold)
 
     for ps in PSEUDOBULKS:
         ranked = da.sort_values(f"log2fc_{ps}", ascending=False)

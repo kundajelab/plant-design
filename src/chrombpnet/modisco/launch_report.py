@@ -15,7 +15,7 @@ Usage:
     python src/chrombpnet/modisco/launch_report.py --finetuned                        # reports for finetuned model attributions (50:50)
     python src/chrombpnet/modisco/launch_report.py --finetuned --da-fraction 0.8     # reports for finetuned model attributions (80:20)
     python src/chrombpnet/modisco/launch_report.py --da-peaks tau                    # reports for tau DA-peaks attributions
-    python src/chrombpnet/modisco/launch_report.py --da-peaks pairwise               # reports for pairwise DA-peaks attributions
+    python src/chrombpnet/modisco/launch_report.py --da-peaks specific_union       # reports for per-cell-type union DA-peaks attributions
     python src/chrombpnet/modisco/launch_report.py --time 2:00:00 --mem 32G
 """
 
@@ -24,6 +24,9 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "attribute"))
+from da_peaks import DA_PEAK_CHOICES, da_suffix
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 PSEUDOBULKS_PATH = REPO_ROOT / "configs" / "pseudobulks.txt"
@@ -48,6 +51,7 @@ def main():
     )
     parser.add_argument(
         "--model-type",
+        "--model",
         type=str,
         action="append",
         choices=["bias", "accessibility"],
@@ -69,7 +73,7 @@ def main():
     parser.add_argument(
         "--da-peaks",
         type=str,
-        choices=["tau", "pairwise"],
+        choices=DA_PEAK_CHOICES,
         default=None,
         help="Run reports on DA-peaks-only modisco outputs (default: all peaks)",
     )
@@ -87,7 +91,16 @@ def main():
 
     fine_tag = "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
     modisco_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
-    da_suffix = f"_da_{args.da_peaks}" if args.da_peaks is not None else ""
+    suffix = da_suffix(args.da_peaks)
+
+    if args.finetuned and "bias" in model_types:
+        print(
+            "Warning: bias model is not saved during finetuning; skipping bias model type.",
+            file=sys.stderr,
+        )
+        model_types = [m for m in model_types if m != "bias"]
+        if not model_types:
+            sys.exit(0)
 
     # Load pseudobulk list
     pseudobulks = PSEUDOBULKS_PATH.read_text().splitlines()
@@ -104,18 +117,18 @@ def main():
     for pseudobulk in pseudobulks:
         for model_type in model_types:
             for head in heads:
-                out_h5 = out_dir / f"{pseudobulk}_{model_type}_{head}{da_suffix}.modisco.h5"
+                out_h5 = out_dir / f"{pseudobulk}_{model_type}_{head}{suffix}.modisco.h5"
                 if not out_h5.exists():
                     skipped_no_h5 += 1
                     continue
 
-                report_dir = out_dir / f"{pseudobulk}_{model_type}_{head}{da_suffix}.modisco"
+                report_dir = out_dir / f"{pseudobulk}_{model_type}_{head}{suffix}.modisco"
                 if report_dir.exists():
                     skipped_done += 1
                     continue
 
                 tag = f"_{fine_tag}" if args.finetuned else ""
-                job_name = f"modisco_report{tag}{da_suffix}_{pseudobulk}_{model_type}_{head}"
+                job_name = f"modisco_report{tag}{suffix}_{pseudobulk}_{model_type}_{head}"
 
                 modisco_report_cmd = (
                     f"modisco report -l"

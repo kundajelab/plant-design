@@ -19,14 +19,11 @@ import torch
 from bpnetlite.attribute import deep_lift_shap
 from bpnetlite.bpnet import CountWrapper, ProfileWrapper
 from tangermeme.io import extract_loci
+from da_peaks import DA_PEAK_CHOICES, da_suffix, resolve_loci_path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
-DA_BEDS = {
-    "tau": REPO_ROOT / "data" / "peaks" / "differential_accessibility" / "da_peaks_tau.bed",
-    "pairwise": REPO_ROOT / "data" / "peaks" / "differential_accessibility" / "da_peaks_pairwise.bed",
-}
 
 
 def main():
@@ -57,11 +54,14 @@ def main():
     parser.add_argument(
         "--da-peaks",
         type=str,
-        choices=["tau", "pairwise"],
+        choices=DA_PEAK_CHOICES,
         default=None,
         help="Run attributions on DA peaks instead of all cell-type peaks. "
-             "'tau' uses da_peaks_tau.bed; 'pairwise' uses da_peaks_pairwise.bed. "
-             "Requires differential_accessibility.py to have been run first.",
+             "'tau' uses da_peaks_tau.bed; 'pairwise' uses da_peaks_pairwise.bed; "
+             "'pairwise_higher' uses per-cell-type directional pairwise BEDs; "
+             "'specific_union' uses per-cell-type tau-specific OR pairwise-higher BEDs. "
+             "Requires differential_accessibility.py and write_pairwise_higher_beds.py "
+             "to have been run first.",
     )
     parser.add_argument("-b", "--batch-size", type=int, default=64)
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -95,17 +95,16 @@ def main():
 
     # Construct data paths and verify that they exist.
     if args.da_peaks is not None:
-        da_bed = DA_BEDS[args.da_peaks]
-        if not da_bed.exists():
+        peaks_path = resolve_loci_path(REPO_ROOT, args.pseudobulk, args.da_peaks)
+        if not peaks_path.exists():
             print(
-                f"Error: {da_bed.name} not found: {da_bed}. "
-                "Run differential_accessibility.py first.",
+                f"Error: {peaks_path.name} not found: {peaks_path}. "
+                "Run differential_accessibility.py and write_pairwise_higher_beds.py first.",
                 file=sys.stderr,
             )
             sys.exit(1)
-        peaks_path = str(da_bed)
     else:
-        peaks_path = str(REPO_ROOT / f"data/peaks/{args.pseudobulk}_peaks_ACGT.narrowPeak")
+        peaks_path = resolve_loci_path(REPO_ROOT, args.pseudobulk, None)
         if not Path(peaks_path).exists():
             print(f"Error: peaks not found: {peaks_path}", file=sys.stderr)
             sys.exit(1)
@@ -125,7 +124,7 @@ def main():
     # Build params with defaults, then apply CLI overrides
     params = {
         "sequences": FASTA,
-        "loci": peaks_path,
+        "loci": str(peaks_path),
         "in_window": 2114,
         "batch_size": 64,
         "verbose": False,
@@ -179,8 +178,10 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Save attributions
-    da_suffix = f"_da_{args.da_peaks}" if args.da_peaks is not None else ""
-    out_path = out_dir / f"{args.pseudobulk}_{args.model_type}_{args.head}{da_suffix}.npz"
+    out_path = (
+        out_dir
+        / f"{args.pseudobulk}_{args.model_type}_{args.head}{da_suffix(args.da_peaks)}.npz"
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(out_path, np.stack(attributions).mean(axis=0))
     print(f"\nAttributions saved to {out_path}")

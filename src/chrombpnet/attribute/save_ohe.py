@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 from tangermeme.io import extract_loci
+from da_peaks import DA_PEAK_CHOICES, da_suffix, resolve_loci_path, resolve_ohe_path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
@@ -29,6 +30,13 @@ def main():
         choices=["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"],
         help="The name of the pseudobulk to benchmark",
     )
+    parser.add_argument(
+        "--da-peaks",
+        type=str,
+        choices=DA_PEAK_CHOICES,
+        default=None,
+        help="Save OHE sequences for a DA peak set instead of all cell-type peaks",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -37,7 +45,7 @@ def main():
         chrom_splits = json.load(f)
 
     # Construct data paths and verify that they exist.
-    peaks_path = str(REPO_ROOT / f"data/peaks/{args.pseudobulk}_peaks_ACGT.narrowPeak")
+    peaks_path = resolve_loci_path(REPO_ROOT, args.pseudobulk, args.da_peaks)
     for path, label in [(peaks_path, "peaks")]:
         if not Path(path).exists():
             print(f"Error: {label} not found: {path}", file=sys.stderr)
@@ -46,7 +54,7 @@ def main():
     # Build params with defaults, then apply CLI overrides
     params = {
         "sequences": FASTA,
-        "loci": peaks_path,
+        "loci": str(peaks_path),
         "in_window": 2114,
         "verbose": False,
     }
@@ -69,9 +77,9 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Save OHE
-    ohe_path = out_dir / f"{args.pseudobulk}_ohe.npz"
+    ohe_path = resolve_ohe_path(REPO_ROOT, args.pseudobulk, args.da_peaks)
     np.savez_compressed(ohe_path, X)
-    print(f"\nOne-hot-encoded sequences saved to {ohe_path}")
+    print(f"\nOne-hot-encoded sequences{da_suffix(args.da_peaks)} saved to {ohe_path}")
 
 
 if __name__ == "__main__":

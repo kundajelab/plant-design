@@ -11,8 +11,7 @@ Requires da_peaks.csv to already exist (run differential_accessibility.py first)
 
 Usage:
     python src/chrombpnet/benchmark/benchmark_da.py
-    python src/chrombpnet/benchmark/benchmark_da.py --save-output
-    python src/chrombpnet/benchmark/benchmark_da.py --finetuned
+    python src/chrombpnet/benchmark/benchmark_da.py --save-output --finetuned
 """
 
 import argparse
@@ -59,6 +58,106 @@ def corr(x, y):
     return float(r), float(rho)
 
 
+def safe_roc_auc(y_true, y_score):
+    """AUROC with NaN handling and one-class guards."""
+    mask = np.isfinite(y_score)
+    y_true = np.asarray(y_true)[mask].astype(int)
+    y_score = np.asarray(y_score)[mask]
+    if len(y_true) < 2 or len(np.unique(y_true)) < 2:
+        return float("nan")
+    return float(roc_auc_score(y_true, y_score))
+
+
+def safe_average_precision(y_true, y_score):
+    """Average precision with NaN handling and one-class guards."""
+    mask = np.isfinite(y_score)
+    y_true = np.asarray(y_true)[mask].astype(int)
+    y_score = np.asarray(y_score)[mask]
+    if len(y_true) < 2 or y_true.sum() == 0:
+        return float("nan")
+    return float(average_precision_score(y_true, y_score))
+
+
+def regression_errors(pred, obs):
+    """MAE and RMSE for finite predicted/observed values."""
+    mask = np.isfinite(pred) & np.isfinite(obs)
+    if mask.sum() == 0:
+        return float("nan"), float("nan")
+    err = pred[mask] - obs[mask]
+    return float(np.mean(np.abs(err))), float(np.sqrt(np.mean(err**2)))
+
+
+def calibration_slope(pred, obs):
+    """Slope from obs_logFC ~ pred_logFC through an intercept."""
+    mask = np.isfinite(pred) & np.isfinite(obs)
+    if mask.sum() < 2 or np.nanvar(pred[mask]) == 0:
+        return float("nan")
+    slope, _intercept = np.polyfit(pred[mask], obs[mask], 1)
+    return float(slope)
+
+
+def direction_concordance(pred, obs):
+    """Sign agreement and balanced sign accuracy for non-zero observed effects."""
+    mask = np.isfinite(pred) & np.isfinite(obs) & (obs != 0)
+    if mask.sum() == 0:
+        return {
+            "accuracy": float("nan"),
+            "balanced_accuracy": float("nan"),
+            "positive_accuracy": float("nan"),
+            "negative_accuracy": float("nan"),
+            "n": 0,
+            "n_positive": 0,
+            "n_negative": 0,
+        }
+
+    pred_sign = np.sign(pred[mask])
+    obs_sign = np.sign(obs[mask])
+    agreement = pred_sign == obs_sign
+    pos_mask = obs_sign > 0
+    neg_mask = obs_sign < 0
+    pos_acc = float(agreement[pos_mask].mean()) if pos_mask.any() else float("nan")
+    neg_acc = float(agreement[neg_mask].mean()) if neg_mask.any() else float("nan")
+    finite_accs = [x for x in (pos_acc, neg_acc) if np.isfinite(x)]
+    balanced = float(np.mean(finite_accs)) if finite_accs else float("nan")
+
+    return {
+        "accuracy": float(agreement.mean()),
+        "balanced_accuracy": balanced,
+        "positive_accuracy": pos_acc,
+        "negative_accuracy": neg_acc,
+        "n": int(mask.sum()),
+        "n_positive": int(pos_mask.sum()),
+        "n_negative": int(neg_mask.sum()),
+    }
+
+
+def precision_at_k(y_true, y_score, k):
+    """Precision among the top-k finite scores."""
+    mask = np.isfinite(y_score)
+    y_true = np.asarray(y_true)[mask].astype(int)
+    y_score = np.asarray(y_score)[mask]
+    if len(y_true) == 0 or k <= 0:
+        return float("nan")
+    k = min(int(k), len(y_true))
+    order = np.argsort(y_score)[::-1][:k]
+    return float(y_true[order].mean())
+
+
+def ranking_metrics(y_true, y_score, ks=(100, 500, 1000)):
+    """Precision@K and AP for recovering binary DA positives."""
+    y_true = np.asarray(y_true).astype(int)
+    n_pos = int(y_true.sum())
+    metrics = {
+        "average_precision": safe_average_precision(y_true, y_score),
+        "positive_rate": float(y_true.mean()) if len(y_true) else float("nan"),
+        "n_positive": n_pos,
+    }
+    for k in ks:
+        metrics[f"precision_at_{k}"] = precision_at_k(y_true, y_score, k)
+    metrics["precision_at_n_positives"] = precision_at_k(y_true, y_score, n_pos)
+    return metrics
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -101,7 +200,9 @@ def main():
     )
     args = parser.parse_args()
 
-    fine_tag = "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
+    fine_tag = (
+        "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
+    )
     model_subdir = fine_tag if args.finetuned else "torch"
 
     # Load observed DA values
@@ -216,26 +317,16 @@ def main():
     # Compute metrics
     print("Computing benchmark metrics...")
 
-    # 1. Per-cell-type log2FC correlations (all peaks + tau-specific peaks + specific_to peaks)
+    # 1. Per-cell-type log2FC correlations (all peaks + tau-filtered peaks)
     log2fc_metrics = {}
     for i, ps in enumerate(PSEUDOBULKS):
-        specific_mask = obs_specific_to == ps
         r_all, rho_all = corr(pred_log2fc[:, i], obs_log2fc[:, i])
         r_tau, rho_tau = corr(pred_log2fc[tau_mask, i], obs_log2fc[tau_mask, i])
-        tau_specific_mask = tau_mask & specific_mask
-        r_sp, rho_sp = corr(pred_log2fc[specific_mask, i], obs_log2fc[specific_mask, i])
-        r_tau_sp, rho_tau_sp = corr(pred_log2fc[tau_specific_mask, i], obs_log2fc[tau_specific_mask, i])
         log2fc_metrics[ps] = {
             "pearson": r_all,
             "spearman": rho_all,
             "pearson_tau_filtered": r_tau,
             "spearman_tau_filtered": rho_tau,
-            "pearson_specific_to": r_sp,
-            "spearman_specific_to": rho_sp,
-            "pearson_tau_specific_to": r_tau_sp,
-            "spearman_tau_specific_to": rho_tau_sp,
-            "n_specific_to": int(specific_mask.sum()),
-            "n_tau_specific_to": int(tau_specific_mask.sum()),
         }
 
     # 2. Pairwise log2FC correlations (all peaks + pairwise-DA peaks)
@@ -250,6 +341,96 @@ def main():
             "pearson_pairwise_filtered": r_pw,
             "spearman_pairwise_filtered": rho_pw,
         }
+
+    # 2b. Contrast-specific DA metrics.
+    pairwise_contrast_filtered = {}
+    pairwise_direction = {}
+    pairwise_detection = {}
+    pairwise_calibration = {}
+    for key, obs_vals in obs_pair_log2fc.items():
+        pred_vals = pred_pair_log2fc[key]
+        finite_mask_pair = np.isfinite(obs_vals) & np.isfinite(pred_vals)
+        contrast_mask = finite_mask_pair & (np.abs(obs_vals) >= args.log2fc_threshold)
+        r_cf, rho_cf = corr(pred_vals[contrast_mask], obs_vals[contrast_mask])
+        mae, rmse = regression_errors(pred_vals[contrast_mask], obs_vals[contrast_mask])
+
+        positives = (
+            np.abs(obs_vals[finite_mask_pair]) >= args.log2fc_threshold
+        ).astype(int)
+        scores = np.abs(pred_vals[finite_mask_pair])
+        pairwise_contrast_filtered[key] = {
+            "pearson": r_cf,
+            "spearman": rho_cf,
+            "n": int(contrast_mask.sum()),
+        }
+        pairwise_direction[key] = direction_concordance(
+            pred_vals[contrast_mask], obs_vals[contrast_mask]
+        )
+        pairwise_detection[key] = {
+            "auroc": safe_roc_auc(positives, scores),
+            "auprc": safe_average_precision(positives, scores),
+            "positive_rate": float(positives.mean())
+            if len(positives)
+            else float("nan"),
+            "n_positive": int(positives.sum()),
+            "n": int(len(positives)),
+        }
+        pairwise_calibration[key] = {
+            "mae": mae,
+            "rmse": rmse,
+            "slope": calibration_slope(
+                pred_vals[contrast_mask], obs_vals[contrast_mask]
+            ),
+            "n": int(contrast_mask.sum()),
+        }
+
+    pairwise_keys = list(obs_pair_log2fc.keys())
+    pred_pair_abs = np.column_stack(
+        [np.abs(pred_pair_log2fc[k]) for k in pairwise_keys]
+    )
+    pred_top1_contrast = np.array(pairwise_keys)[pred_pair_abs.argmax(axis=1)]
+    pred_top2_contrast = np.array(pairwise_keys)[
+        np.argsort(pred_pair_abs, axis=1)[:, -2:]
+    ]
+    obs_max_contrast = da["max_pairwise_contrast"].values
+    max_top1 = pred_top1_contrast == obs_max_contrast
+    max_top2 = np.array(
+        [
+            obs in set(pred_row)
+            for obs, pred_row in zip(obs_max_contrast, pred_top2_contrast)
+        ]
+    )
+    max_contrast_recovery = {
+        "top1_accuracy": float(max_top1.mean()),
+        "top2_accuracy": float(max_top2.mean()),
+        "top1_accuracy_pairwise_filtered": (
+            float(max_top1[pairwise_mask].mean())
+            if pairwise_mask.any()
+            else float("nan")
+        ),
+        "top2_accuracy_pairwise_filtered": (
+            float(max_top2[pairwise_mask].mean())
+            if pairwise_mask.any()
+            else float("nan")
+        ),
+        "n": int(len(obs_max_contrast)),
+        "n_pairwise_filtered": int(pairwise_mask.sum()),
+    }
+
+    ranking = {
+        "celltype_tau": {},
+        "pairwise_abs_log2fc": {},
+    }
+    for i, ps in enumerate(PSEUDOBULKS):
+        positives = (tau_mask & (obs_specific_to == ps)).astype(int)
+        ranking["celltype_tau"][ps] = ranking_metrics(positives, pred_log2fc[:, i])
+    for key, obs_vals in obs_pair_log2fc.items():
+        positives = (
+            np.isfinite(obs_vals) & (np.abs(obs_vals) >= args.log2fc_threshold)
+        ).astype(int)
+        ranking["pairwise_abs_log2fc"][key] = ranking_metrics(
+            positives, np.abs(pred_pair_log2fc[key])
+        )
 
     # 3. Tau correlations (all peaks, NaN-safe; and pairwise-DA peaks)
     tau_r_all, tau_rho_all = corr(pred_tau, obs_tau)
@@ -269,14 +450,18 @@ def main():
         return (obs_tau[mask] >= args.tau_threshold).astype(int)
 
     tau_auc_metrics = {
-        "auroc_all_peaks": float(roc_auc_score(_tau_binary(finite_mask), pred_tau[finite_mask]))
-            if finite_mask.sum() >= 2 else float("nan"),
-        "auroc_pairwise_filtered": float(roc_auc_score(_tau_binary(pw_finite_mask), pred_tau[pw_finite_mask]))
-            if pw_finite_mask.sum() >= 2 else float("nan"),
-        "auprc_all_peaks": float(average_precision_score(_tau_binary(finite_mask), pred_tau[finite_mask]))
-            if finite_mask.sum() >= 2 else float("nan"),
-        "auprc_pairwise_filtered": float(average_precision_score(_tau_binary(pw_finite_mask), pred_tau[pw_finite_mask]))
-            if pw_finite_mask.sum() >= 2 else float("nan"),
+        "auroc_all_peaks": safe_roc_auc(
+            _tau_binary(finite_mask), pred_tau[finite_mask]
+        ),
+        "auroc_pairwise_filtered": safe_roc_auc(
+            _tau_binary(pw_finite_mask), pred_tau[pw_finite_mask]
+        ),
+        "auprc_all_peaks": safe_average_precision(
+            _tau_binary(finite_mask), pred_tau[finite_mask]
+        ),
+        "auprc_pairwise_filtered": safe_average_precision(
+            _tau_binary(pw_finite_mask), pred_tau[pw_finite_mask]
+        ),
         "positive_rate": float(_tau_binary(finite_mask).mean()),
     }
 
@@ -305,14 +490,20 @@ def main():
 
     # 6. Top-2 specificity accuracy: obs specific_to is within the 2 highest predicted CPM cell types
     top2_pred_indices = np.argsort(pred_cpm, axis=1)[:, -2:]
-    in_top2 = np.array([
-        obs in [PSEUDOBULKS[idx] for idx in row]
-        for obs, row in zip(obs_specific_to, top2_pred_indices)
-    ])
+    in_top2 = np.array(
+        [
+            obs in [PSEUDOBULKS[idx] for idx in row]
+            for obs, row in zip(obs_specific_to, top2_pred_indices)
+        ]
+    )
     top2_specificity_metrics = {
         "all_peaks": float(in_top2.mean()),
-        "tau_filtered": float(in_top2[tau_mask].mean()) if tau_mask.any() else float("nan"),
-        "pairwise_filtered": float(in_top2[pairwise_mask].mean()) if pairwise_mask.any() else float("nan"),
+        "tau_filtered": float(in_top2[tau_mask].mean())
+        if tau_mask.any()
+        else float("nan"),
+        "pairwise_filtered": float(in_top2[pairwise_mask].mean())
+        if pairwise_mask.any()
+        else float("nan"),
         "baseline": round(2 / len(PSEUDOBULKS), 4),
     }
 
@@ -327,10 +518,40 @@ def main():
             f"{m['pearson_tau_filtered']:.4f} | {m['spearman_tau_filtered']:.4f}"
         )
 
-    print(f"\nTau classification (tau>={args.tau_threshold} as positive, positive rate={tau_auc_metrics['positive_rate']:.4f})"
-          f" — all / pairwise|log2FC|>={args.log2fc_threshold}:")
-    print(f"  AUROC:  {tau_auc_metrics['auroc_all_peaks']:.4f}  /  {tau_auc_metrics['auroc_pairwise_filtered']:.4f}")
-    print(f"  auPRC:  {tau_auc_metrics['auprc_all_peaks']:.4f}  /  {tau_auc_metrics['auprc_pairwise_filtered']:.4f}")
+    def _nanmean_metric(metrics, key):
+        vals = [m[key] for m in metrics.values() if np.isfinite(m[key])]
+        return float(np.mean(vals)) if vals else float("nan")
+
+    print(
+        f"\nContrast-specific pairwise DA metrics (|obs log2FC|>={args.log2fc_threshold}):"
+    )
+    print(
+        f"  Mean Pearson: {_nanmean_metric(pairwise_contrast_filtered, 'pearson'):.4f}"
+    )
+    print(
+        "  Mean balanced direction accuracy: "
+        f"{_nanmean_metric(pairwise_direction, 'balanced_accuracy'):.4f}"
+    )
+    print(
+        "  Mean calibration slope: "
+        f"{_nanmean_metric(pairwise_calibration, 'slope'):.4f}"
+    )
+    print(
+        "  Max-contrast recovery top-1/top-2: "
+        f"{max_contrast_recovery['top1_accuracy']:.4f} / "
+        f"{max_contrast_recovery['top2_accuracy']:.4f}"
+    )
+
+    print(
+        f"\nTau classification (tau>={args.tau_threshold} as positive, positive rate={tau_auc_metrics['positive_rate']:.4f})"
+        f" — all / pairwise|log2FC|>={args.log2fc_threshold}:"
+    )
+    print(
+        f"  AUROC:  {tau_auc_metrics['auroc_all_peaks']:.4f}  /  {tau_auc_metrics['auroc_pairwise_filtered']:.4f}"
+    )
+    print(
+        f"  auPRC:  {tau_auc_metrics['auprc_all_peaks']:.4f}  /  {tau_auc_metrics['auprc_pairwise_filtered']:.4f}"
+    )
 
     n_tau = specificity_metrics["n_tau_filtered"]
     n_pw = specificity_metrics["n_pairwise_filtered"]
@@ -340,9 +561,15 @@ def main():
         f" | top-2 baseline {top2_specificity_metrics['baseline']}):"
     )
     print(f"  {'':35s}  top-1   top-2")
-    print(f"  {'All peaks':35s}  {specificity_metrics['all_peaks']:.4f}  {top2_specificity_metrics['all_peaks']:.4f}")
-    print(f"  {f'Tau >= {args.tau_threshold} (n={n_tau})':35s}  {specificity_metrics['tau_filtered']:.4f}  {top2_specificity_metrics['tau_filtered']:.4f}")
-    print(f"  {f'|log2FC| >= {args.log2fc_threshold} (n={n_pw})':35s}  {specificity_metrics['pairwise_filtered']:.4f}  {top2_specificity_metrics['pairwise_filtered']:.4f}")
+    print(
+        f"  {'All peaks':35s}  {specificity_metrics['all_peaks']:.4f}  {top2_specificity_metrics['all_peaks']:.4f}"
+    )
+    print(
+        f"  {f'Tau >= {args.tau_threshold} (n={n_tau})':35s}  {specificity_metrics['tau_filtered']:.4f}  {top2_specificity_metrics['tau_filtered']:.4f}"
+    )
+    print(
+        f"  {f'|log2FC| >= {args.log2fc_threshold} (n={n_pw})':35s}  {specificity_metrics['pairwise_filtered']:.4f}  {top2_specificity_metrics['pairwise_filtered']:.4f}"
+    )
 
     # Save JSON
     out_dir = REPO_ROOT / "performance_metrics" / "differential_accessibility"
@@ -357,6 +584,12 @@ def main():
         "log2fc_threshold": args.log2fc_threshold,
         "log2fc_per_celltype": log2fc_metrics,
         "pairwise_log2fc": pairwise_metrics,
+        "pairwise_log2fc_contrast_filtered": pairwise_contrast_filtered,
+        "pairwise_direction_concordance": pairwise_direction,
+        "pairwise_da_detection": pairwise_detection,
+        "pairwise_effect_size_calibration": pairwise_calibration,
+        "max_contrast_recovery": max_contrast_recovery,
+        "ranking_metrics": ranking,
         "tau": tau_metrics,
         "tau_auc": tau_auc_metrics,
         "specificity_accuracy": specificity_metrics,

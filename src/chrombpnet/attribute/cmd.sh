@@ -9,12 +9,14 @@ for pseudobulk in "bundle_sheath" "epidermis" "guard" "mesophyll" "phloem" "xyle
     echo time python save_ohe.py -v -p ${pseudobulk}
 done | parallel
 
-time python launch.py
+python ../../data_preprocessing/write_pairwise_higher_beds.py
 
-time python launch.py --finetuned --da-fraction 0.8
-time python launch.py --da-peaks tau --model accessibility --time 6:00:00
-time python launch.py --da-peaks pairwise --model accessibility --time 6:00:00
+for pseudobulk in "bundle_sheath" "epidermis" "guard" "mesophyll" "phloem" "xylem"; do
+    echo time python save_ohe.py -v -p ${pseudobulk} --da-peaks specific_union
+done | parallel
 
-time python launch.py --da-peaks pairwise --finetuned --da-fraction 0.8 --time 6:00:00
-time python launch.py --da-peaks tau --finetuned --da-fraction 0.8 --time 6:00:00
-time python launch.py --da-peaks pairwise --finetuned --da-fraction 0.8 --time 6:00:00
+time python launch.py --da-peaks specific_union --model accessibility --time 6:00:00
+
+time python launch.py --da-peaks specific_union --model accessibility --finetuned --time 6:00:00
+
+time python launch.py --da-peaks specific_union --model accessibility --finetuned --da-fraction 0.8 --time 6:00:00

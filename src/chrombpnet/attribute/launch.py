@@ -5,8 +5,9 @@ Reads pseudobulks from configs/pseudobulks.txt and submits one sbatch job per
 (pseudobulk, model_type, head) triple via `deepliftshap.py`.
 
 Jobs are skipped if the attribution output already exists, if the required
-peaks_ACGT file is missing (run filter_nonACGT_regions.py first), or if the
-required model files are missing (run convert_to_torch.py first).
+loci BED file is missing (run filter_nonACGT_regions.py, differential_accessibility.py,
+or write_pairwise_higher_beds.py as needed), or if the required model files are
+missing (run convert_to_torch.py first).
 
 Usage:
     python src/chrombpnet/attribute/launch.py                                    # all pseudobulks, both model types, both heads
@@ -16,7 +17,7 @@ Usage:
     python src/chrombpnet/attribute/launch.py --finetuned                        # finetuned models (50:50 DA split)
     python src/chrombpnet/attribute/launch.py --finetuned --da-fraction 0.8     # finetuned models (80:20 DA split)
     python src/chrombpnet/attribute/launch.py --da-peaks tau                    # attributions on tau-specific peaks only
-    python src/chrombpnet/attribute/launch.py --da-peaks pairwise               # attributions on pairwise DA peaks only
+    python src/chrombpnet/attribute/launch.py --da-peaks specific_union       # attributions on per-cell-type union DA peaks
     python src/chrombpnet/attribute/launch.py --time 24:00:00 --mem 128G
 """
 
@@ -25,6 +26,7 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
+from da_peaks import DA_PEAK_CHOICES, da_suffix, resolve_loci_path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 PSEUDOBULKS_PATH = REPO_ROOT / "configs" / "pseudobulks.txt"
@@ -49,6 +51,7 @@ def main():
     )
     parser.add_argument(
         "--model-type",
+        "--model",
         type=str,
         action="append",
         choices=["bias", "accessibility"],
@@ -59,7 +62,7 @@ def main():
     parser.add_argument(
         "--da-peaks",
         type=str,
-        choices=["tau", "pairwise"],
+        choices=DA_PEAK_CHOICES,
         default=None,
         help="Run attributions on DA peaks instead of all cell-type peaks (default: all peaks)",
     )
@@ -124,13 +127,11 @@ def main():
     skipped_missing = 0
 
     for pseudobulk in pseudobulks:
-        peaks_path = (
-            REPO_ROOT / "data" / "peaks" / f"{pseudobulk}_peaks_ACGT.narrowPeak"
-        )
+        peaks_path = resolve_loci_path(REPO_ROOT, pseudobulk, args.da_peaks)
         if not peaks_path.exists():
             skipped_missing += len(model_types) * len(heads)
             print(
-                f"SKIP {pseudobulk}: peaks_ACGT file missing ({peaks_path})",
+                f"SKIP {pseudobulk}: loci file missing ({peaks_path})",
                 file=sys.stderr,
             )
             continue
@@ -151,14 +152,14 @@ def main():
                 continue
 
             for head in heads:
-                da_suffix = f"_da_{args.da_peaks}" if args.da_peaks is not None else ""
-                out_path = attr_dir / out_subdir / f"{pseudobulk}_{model_type}_{head}{da_suffix}.npz"
+                suffix = da_suffix(args.da_peaks)
+                out_path = attr_dir / out_subdir / f"{pseudobulk}_{model_type}_{head}{suffix}.npz"
                 if out_path.exists():
                     skipped_done += 1
                     continue
 
                 tag = f"_{fine_tag}" if args.finetuned else ""
-                da_tag = f"_da_{args.da_peaks}" if args.da_peaks is not None else ""
+                da_tag = da_suffix(args.da_peaks)
                 job_name = f"deepliftshap{tag}{da_tag}_{pseudobulk}_{model_type}_{head}"
                 script_path = Path(__file__).resolve().parent / "deepliftshap.py"
 

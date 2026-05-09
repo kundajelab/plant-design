@@ -77,6 +77,30 @@ def grouped_bars(ax, groups, vals_list, labels, colors, *,
     ax.spines["right"].set_visible(False)
 
 
+def pairwise_metric_matrix(pairwise_dict, metric_key):
+    """Build a symmetric pairwise metric matrix from A_vs_B keyed metrics."""
+    mat = np.full((len(PSEUDOBULKS), len(PSEUDOBULKS)), np.nan)
+    for i, ps1 in enumerate(PSEUDOBULKS):
+        for j, ps2 in enumerate(PSEUDOBULKS):
+            if i == j:
+                continue
+            key = f"{ps1}_vs_{ps2}"
+            rev_key = f"{ps2}_vs_{ps1}"
+            if key in pairwise_dict:
+                mat[i, j] = pairwise_dict[key].get(metric_key, np.nan)
+            elif rev_key in pairwise_dict:
+                mat[i, j] = pairwise_dict[rev_key].get(metric_key, np.nan)
+    return mat
+
+
+def annotate_heatmap(ax, mat, *, fmt="{:.2f}", threshold=0.5):
+    for i in range(mat.shape[0]):
+        for j in range(mat.shape[1]):
+            if not np.isnan(mat[i, j]):
+                ax.text(j, i, fmt.format(mat[i, j]), ha="center", va="center",
+                        fontsize=6, color="white" if mat[i, j] < threshold else "black")
+
+
 # ---------------------------------------------------------------------------
 # Figure 1: Cross-loci benchmark (with per-fold error bars)
 # ---------------------------------------------------------------------------
@@ -84,8 +108,8 @@ def grouped_bars(ax, groups, vals_list, labels, colors, *,
 def plot_cross_loci(pseudobulks, out_dir, verbose=False):
     dirs = [
         REPO_ROOT / "performance_metrics" / "chrombpnet",
-        REPO_ROOT / "performance_metrics" / "chrombpnet_finetuned",
-        REPO_ROOT / "performance_metrics" / "chrombpnet_finetuned_0.8",
+        REPO_ROOT / "performance_metrics" / "finetuned",
+        REPO_ROOT / "performance_metrics" / "finetuned_0.8",
     ]
     all_data = [
         {ps: load_json(d / f"{ps}.json") for ps in pseudobulks}
@@ -137,7 +161,7 @@ def plot_cross_loci(pseudobulks, out_dir, verbose=False):
 
     # Shared legend
     handles, lbls = axes[0].get_legend_handles_labels()
-    fig.legend(handles, lbls, loc="upper right", frameon=False)
+    fig.legend(handles, lbls, loc="upper right", bbox_to_anchor=(1.12, 1), frameon=False)
     fig.suptitle("Cross-loci benchmark (error bars = ±1 SD across folds)", fontsize=13, y=1.01)
     fig.tight_layout()
 
@@ -152,7 +176,7 @@ def plot_cross_loci(pseudobulks, out_dir, verbose=False):
 # ---------------------------------------------------------------------------
 
 def plot_da_log2fc(out_dir, verbose=False):
-    """Three-panel figure: per-cell-type log2FC Pearson under all / tau / tau+specific_to peaks."""
+    """Two-panel figure: per-cell-type log2FC Pearson under all / tau-filtered peaks."""
     paths = [
         REPO_ROOT / "performance_metrics" / "differential_accessibility" / "da_benchmark.json",
         REPO_ROOT / "performance_metrics" / "differential_accessibility" / "da_benchmark_finetuned.json",
@@ -167,24 +191,14 @@ def plot_da_log2fc(out_dir, verbose=False):
         print("Error: base da_benchmark.json is required.", file=sys.stderr)
         sys.exit(1)
 
-    has_specific = lambda d: d is not None and "pearson_tau_specific_to" in list(get_log2fc(d).values())[0]  # noqa: E731
-    active = [(m, d) for m, avail, d in zip(MODELS, available, all_data) if avail and has_specific(d)]
-    if not active:
-        print("Warning: no da_benchmark JSON contains pearson_tau_specific_to; "
-              "re-run benchmark_da.py first.", file=sys.stderr)
-        return
+    active = [(m, d) for m, avail, d in zip(MODELS, available, all_data) if avail]
     labels = [m[0] for m, _ in active]
     colors = [m[1] for m, _ in active]
     datasets = [d for _, d in active]
 
-    ref_log2fc = get_log2fc(datasets[0])
     tau_threshold = datasets[0].get("tau_threshold", 0.75)
-    tau_tick_labels = [
-        f"{ps}\n(n={ref_log2fc[ps].get('n_tau_specific_to', '?'):,})"
-        for ps in PSEUDOBULKS
-    ]
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
     grouped_bars(
         axes[0], PSEUDOBULKS,
@@ -193,23 +207,15 @@ def plot_da_log2fc(out_dir, verbose=False):
         title="Per-cell-type log2FC Pearson\n(all peaks)", ylabel="Pearson r",
     )
     grouped_bars(
-        axes[1], tau_tick_labels,
+        axes[1], PSEUDOBULKS,
         [[get_log2fc(d)[ps]["pearson_tau_filtered"] for ps in PSEUDOBULKS] for d in datasets],
         labels, colors,
         title=f"Per-cell-type log2FC Pearson\n(tau≥{tau_threshold} peaks)", ylabel="Pearson r",
     )
-    grouped_bars(
-        axes[2], tau_tick_labels,
-        [[get_log2fc(d)[ps]["pearson_tau_specific_to"] for ps in PSEUDOBULKS] for d in datasets],
-        labels, colors,
-        title=f"Per-cell-type log2FC Pearson\n(tau≥{tau_threshold} + specific_to peaks)", ylabel="Pearson r",
-    )
 
     handles, lbls = axes[0].get_legend_handles_labels()
-    fig.legend(handles, lbls, loc="upper right", frameon=False)
-    fig.suptitle("Mean-subtracted log2FC Pearson (predicted vs observed)\n"
-                 "n = peaks where that cell type has highest CPM AND tau≥threshold",
-                 fontsize=11, y=1.03)
+    fig.legend(handles, lbls, loc="upper right", bbox_to_anchor=(1.12, 1), frameon=False)
+    fig.suptitle("Mean-subtracted log2FC Pearson (predicted vs observed)", fontsize=11, y=1.03)
     fig.tight_layout()
 
     out_path = out_dir / "da_log2fc.pdf"
@@ -256,7 +262,7 @@ def plot_da_benchmark(out_dir, verbose=False):
 
     short_labels = [ps.replace("_", "\n") for ps in PSEUDOBULKS]
     ncols = max(n_models, 2)
-    fig, axes = plt.subplots(2, ncols, figsize=(5.5 * ncols, 11))
+    fig, axes = plt.subplots(2, ncols, figsize=(5.5 * ncols, 11), constrained_layout=True)
 
     def pairwise_to_matrix(pairwise_dict, metric_key):
         mat = np.full((len(PSEUDOBULKS), len(PSEUDOBULKS)), np.nan)
@@ -338,10 +344,9 @@ def plot_da_benchmark(out_dir, verbose=False):
             if lbl not in all_labels_leg:
                 all_handles.append(h)
                 all_labels_leg.append(lbl)
-    fig.legend(all_handles, all_labels_leg, loc="upper right", frameon=False)
+    fig.legend(all_handles, all_labels_leg, loc="outside upper right", frameon=False)
     fig.suptitle("Differential accessibility benchmark\n(no per-fold error bars — metrics computed jointly over all held-out peaks)",
-                 fontsize=12, y=1.01)
-    fig.tight_layout()
+                 fontsize=12)
 
     out_path = out_dir / "da_benchmark.pdf"
     fig.savefig(out_path, bbox_inches="tight")
@@ -350,7 +355,184 @@ def plot_da_benchmark(out_dir, verbose=False):
 
 
 # ---------------------------------------------------------------------------
-# Figure 4: Pairwise count correlation heatmaps
+# Figure 4: Pairwise log2FC Pearson heatmaps (standalone)
+# ---------------------------------------------------------------------------
+
+def plot_da_pairwise_log2fc(out_dir, verbose=False):
+    """Standalone figure: pairwise log2FC Pearson heatmaps, all peaks vs filtered."""
+    paths = [
+        REPO_ROOT / "performance_metrics" / "differential_accessibility" / "da_benchmark.json",
+        REPO_ROOT / "performance_metrics" / "differential_accessibility" / "da_benchmark_finetuned.json",
+        REPO_ROOT / "performance_metrics" / "differential_accessibility" / "da_benchmark_finetuned_0.8.json",
+    ]
+    all_data = [load_json(p) for p in paths]
+    available = [d is not None for d in all_data]
+    for (label, _), avail, p in zip(MODELS, available, paths):
+        if not avail:
+            print(f"Warning: {label} DA benchmark JSON not found: {p}", file=sys.stderr)
+    if not available[0]:
+        print("Error: base da_benchmark.json is required.", file=sys.stderr)
+        sys.exit(1)
+
+    active = [(m, d) for m, avail, d in zip(MODELS, available, all_data) if avail]
+    n_models = len(active)
+
+    ref = active[0][1]
+    log2fc_threshold = ref.get("log2fc_threshold", 1.5)
+    n_all = ref["pairwise_log2fc"][f"{PSEUDOBULKS[0]}_vs_{PSEUDOBULKS[1]}"].get("n", None)
+    n_filtered = ref.get("specificity_accuracy", {}).get("n_pairwise_filtered", None)
+
+    def pairwise_to_matrix(pairwise_dict, metric_key):
+        return pairwise_metric_matrix(pairwise_dict, metric_key)
+
+    short_labels = [ps.replace("_", "\n") for ps in PSEUDOBULKS]
+    cmap = matplotlib.colormaps["viridis"].copy()
+    cmap.set_bad("lightgray")
+
+    n_rows, n_cols = 2, n_models
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 9), squeeze=False, constrained_layout=True)
+
+    row_titles = [
+        "All peaks — pearson",
+        f"|log2FC|≥{log2fc_threshold} — pearson (pairwise filtered)",
+    ]
+    metric_keys = ["pearson", "pearson_pairwise_filtered"]
+
+    im = None
+    for col, ((model_label, _color), data) in enumerate(active):
+        for row, (metric_key, row_title) in enumerate(zip(metric_keys, row_titles)):
+            ax = axes[row, col]
+            mat = pairwise_to_matrix(data["pairwise_log2fc"], metric_key)
+            im = ax.imshow(mat, vmin=0, vmax=1, cmap=cmap, aspect="auto")
+            ax.set_xticks(range(len(PSEUDOBULKS)))
+            ax.set_yticks(range(len(PSEUDOBULKS)))
+            ax.set_xticklabels(short_labels, fontsize=7)
+            ax.set_yticklabels(short_labels, fontsize=7)
+            if row == 0:
+                ax.set_title(model_label, fontsize=10)
+            if col == 0:
+                ax.set_ylabel(row_title, fontsize=8)
+            for i in range(len(PSEUDOBULKS)):
+                for j in range(len(PSEUDOBULKS)):
+                    if not np.isnan(mat[i, j]):
+                        ax.text(j, i, f"{mat[i, j]:.2f}", ha="center", va="center",
+                                fontsize=6, color="white" if mat[i, j] < 0.5 else "black")
+
+    fig.colorbar(im, ax=axes[:, :n_models].ravel().tolist(), shrink=0.6, label="Pearson r")
+    fig.suptitle("Pairwise log2FC Pearson (predicted vs observed)", fontsize=12)
+
+    out_path = out_dir / "da_pairwise_log2fc.pdf"
+    fig.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved {out_path}")
+
+
+# ---------------------------------------------------------------------------
+# Figure 5: Contrast-specific DA metric heatmaps
+# ---------------------------------------------------------------------------
+
+def plot_da_contrast_metrics(out_dir, verbose=False):
+    """Compact heatmaps for the new contrast-specific DA metrics."""
+    paths = [
+        REPO_ROOT / "performance_metrics" / "differential_accessibility" / "da_benchmark.json",
+        REPO_ROOT / "performance_metrics" / "differential_accessibility" / "da_benchmark_finetuned.json",
+        REPO_ROOT / "performance_metrics" / "differential_accessibility" / "da_benchmark_finetuned_0.8.json",
+    ]
+    all_data = [load_json(p) for p in paths]
+    available = [d is not None for d in all_data]
+    for (label, _), avail, p in zip(MODELS, available, paths):
+        if not avail:
+            print(f"Warning: {label} DA benchmark JSON not found: {p}", file=sys.stderr)
+
+    required = [
+        "pairwise_log2fc_contrast_filtered",
+        "pairwise_direction_concordance",
+        "pairwise_effect_size_calibration",
+    ]
+    active = [
+        (m, d)
+        for m, avail, d in zip(MODELS, available, all_data)
+        if avail and all(key in d for key in required)
+    ]
+    if not active:
+        print("Warning: no DA benchmark JSON contains contrast-specific metrics; "
+              "re-run benchmark_da.py first.", file=sys.stderr)
+        return
+
+    n_models = len(active)
+    short_labels = [ps.replace("_", "\n") for ps in PSEUDOBULKS]
+    rows = [
+        (
+            "pairwise_log2fc_contrast_filtered",
+            "pearson",
+            "Contrast-specific log2FC Pearson",
+            0,
+            1,
+            matplotlib.colormaps["viridis"].copy(),
+            0.5,
+        ),
+        (
+            "pairwise_direction_concordance",
+            "balanced_accuracy",
+            "Balanced direction accuracy",
+            0,
+            1,
+            matplotlib.colormaps["viridis"].copy(),
+            0.5,
+        ),
+        (
+            "pairwise_effect_size_calibration",
+            "slope",
+            "Calibration slope",
+            0,
+            2,
+            matplotlib.colormaps["coolwarm"].copy(),
+            1.0,
+        ),
+    ]
+    for *_unused, cmap, _threshold in rows:
+        cmap.set_bad("lightgray")
+
+    fig, axes = plt.subplots(
+        len(rows), n_models,
+        figsize=(5 * n_models, 4.2 * len(rows)),
+        squeeze=False,
+        constrained_layout=True,
+    )
+
+    row_ims = [None] * len(rows)
+    for col, ((model_label, _color), data) in enumerate(active):
+        for row_idx, (section, metric_key, row_title, vmin, vmax, cmap, threshold) in enumerate(rows):
+            ax = axes[row_idx, col]
+            mat = pairwise_metric_matrix(data[section], metric_key)
+            im = ax.imshow(mat, vmin=vmin, vmax=vmax, cmap=cmap, aspect="auto")
+            row_ims[row_idx] = im
+            ax.set_xticks(range(len(PSEUDOBULKS)))
+            ax.set_yticks(range(len(PSEUDOBULKS)))
+            ax.set_xticklabels(short_labels, fontsize=7)
+            ax.set_yticklabels(short_labels, fontsize=7)
+            if row_idx == 0:
+                ax.set_title(model_label, fontsize=10)
+            if col == 0:
+                ax.set_ylabel(row_title, fontsize=8)
+            annotate_heatmap(ax, mat, threshold=threshold)
+    for row_idx, im in enumerate(row_ims):
+        fig.colorbar(im, ax=axes[row_idx, :].tolist(), shrink=0.65)
+
+    log2fc_threshold = active[0][1].get("log2fc_threshold", 1.5)
+    fig.suptitle(
+        f"Contrast-specific DA metrics (|obs log2FC|≥{log2fc_threshold})",
+        fontsize=12,
+    )
+
+    out_path = out_dir / "da_contrast_metrics.pdf"
+    fig.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved {out_path}")
+
+
+# ---------------------------------------------------------------------------
+# Figure 6: Pairwise count correlation heatmaps
 # ---------------------------------------------------------------------------
 
 def plot_pairwise_heatmaps(out_dir, verbose=False):
@@ -375,7 +557,7 @@ def plot_pairwise_heatmaps(out_dir, verbose=False):
 
     short_labels = [ps.replace("_", "\n") for ps in PSEUDOBULKS]
     n = len(panels)
-    fig, axes = plt.subplots(1, n, figsize=(5.5 * n, 5))
+    fig, axes = plt.subplots(1, n, figsize=(5.5 * n, 5), constrained_layout=True)
     if n == 1:
         axes = [axes]
 
@@ -395,7 +577,6 @@ def plot_pairwise_heatmaps(out_dir, verbose=False):
 
     fig.colorbar(im, ax=axes, shrink=0.7, label="Pearson r")
     fig.suptitle("Pairwise count correlations (Pearson)", fontsize=13)
-    fig.tight_layout()
 
     out_path = out_dir / "pairwise_corr.pdf"
     fig.savefig(out_path, bbox_inches="tight")
@@ -433,6 +614,8 @@ def main():
     plot_cross_loci(args.pseudobulks, args.out_dir, verbose=args.verbose)
     plot_da_log2fc(args.out_dir, verbose=args.verbose)
     plot_da_benchmark(args.out_dir, verbose=args.verbose)
+    plot_da_pairwise_log2fc(args.out_dir, verbose=args.verbose)
+    plot_da_contrast_metrics(args.out_dir, verbose=args.verbose)
     plot_pairwise_heatmaps(args.out_dir, verbose=args.verbose)
 
 

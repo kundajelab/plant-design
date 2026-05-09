@@ -146,5 +146,11 @@
         "n_tau_filtered": 1130,
         "n_pairwise_filtered": 9296,
         "baseline": 0.1667
+    },
+    "top2_specificity_accuracy": {
+        "all_peaks": 0.381208740120874,
+        "tau_filtered": 0.4194690265486726,
+        "pairwise_filtered": 0.4238382099827883,
+        "baseline": 0.3333
     }
 }
