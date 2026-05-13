@@ -21,6 +21,10 @@ from tangermeme.io import extract_loci
 from tangermeme.predict import predict
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from chrombpnet.adapters import load_model_with_adapter  # noqa: E402
+
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
 
@@ -56,12 +60,26 @@ def main():
         default=0.5,
         help="DA fraction used during finetuning; selects model/output subdirectory (default: 0.5)",
     )
+    parser.add_argument(
+        "--adapter-sweep-id",
+        type=str,
+        default=None,
+        help="Use adapter bundle from models/{pseudobulk}/adapters/{adapter_sweep_id}/",
+    )
     args = parser.parse_args()
+
+    if args.finetuned and args.adapter_sweep_id is not None:
+        print("Error: use either --finetuned or --adapter-sweep-id, not both.", file=sys.stderr)
+        sys.exit(1)
 
     fine_tag = "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
     model_subdir = fine_tag if args.finetuned else "torch"
-    metrics_subdir = fine_tag if args.finetuned else "chrombpnet"
-    predictions_subdir = fine_tag if args.finetuned else "chrombpnet"
+    if args.adapter_sweep_id is not None:
+        metrics_subdir = f"adapters/{args.adapter_sweep_id}"
+        predictions_subdir = f"adapters/{args.adapter_sweep_id}"
+    else:
+        metrics_subdir = fine_tag if args.finetuned else "chrombpnet"
+        predictions_subdir = fine_tag if args.finetuned else "chrombpnet"
 
     # Load chrom splits
     with open(CHROM_SPLITS_PATH, "r") as f:
@@ -85,9 +103,22 @@ def main():
         / f"{args.pseudobulk}_f{fold}.torch"
         for fold in range(n_folds)
     ]
+    adapter_paths = [
+        REPO_ROOT
+        / "models"
+        / args.pseudobulk
+        / "adapters"
+        / args.adapter_sweep_id
+        / f"{args.pseudobulk}_f{fold}.adapter.pt"
+        for fold in range(n_folds)
+    ] if args.adapter_sweep_id is not None else [None] * n_folds
     for model_path in model_paths:
         if not model_path.exists():
             print(f"Error: model not found: {model_path}", file=sys.stderr)
+            sys.exit(1)
+    for adapter_path in adapter_paths:
+        if adapter_path is not None and not adapter_path.exists():
+            print(f"Error: adapter bundle not found: {adapter_path}", file=sys.stderr)
             sys.exit(1)
 
     params = {
@@ -121,8 +152,10 @@ def main():
         )
         signals.append(torch.abs(y))
 
-        model = torch.load(
-            model_paths[fold], weights_only=False, map_location=torch.device("cpu")
+        model, _manifest = load_model_with_adapter(
+            model_paths[fold],
+            adapter_paths[fold],
+            map_location=torch.device("cpu"),
         )
         preds.append(
             predict(

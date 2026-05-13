@@ -142,3 +142,11 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_pairwise_higher_bundle_sheath.bed: 1999 peaks; /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_specific_union_bundle_sheath.bed: 2003 peaks (118 tau-specific, 114 overlap)
+# /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_pairwise_higher_epidermis.bed: 1791 peaks; /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_specific_union_epidermis.bed: 1797 peaks (94 tau-specific, 88 overlap)
+# /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_pairwise_higher_guard.bed: 3018 peaks; /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_specific_union_guard.bed: 3020 peaks (397 tau-specific, 395 overlap)
+# /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_pairwise_higher_mesophyll.bed: 1255 peaks; /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_specific_union_mesophyll.bed: 1257 peaks (50 tau-specific, 48 overlap)
+# /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_pairwise_higher_phloem.bed: 2354 peaks; /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_specific_union_phloem.bed: 2358 peaks (415 tau-specific, 411 overlap)
+# /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_pairwise_higher_xylem.bed: 926 peaks; /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_specific_union_xylem.bed: 932 peaks (56 tau-specific, 50 overlap)

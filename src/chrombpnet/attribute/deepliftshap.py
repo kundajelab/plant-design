@@ -22,6 +22,10 @@ from tangermeme.io import extract_loci
 from da_peaks import DA_PEAK_CHOICES, da_suffix, resolve_loci_path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from chrombpnet.adapters import load_accessibility_with_adapter  # noqa: E402
+
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
 
@@ -76,12 +80,29 @@ def main():
         default=0.5,
         help="DA fraction used during finetuning; selects model/output subdirectory (default: 0.5)",
     )
+    parser.add_argument(
+        "--adapter-sweep-id",
+        type=str,
+        default=None,
+        help="Use adapter bundles from models/{pseudobulk}/adapters/{adapter_sweep_id}/",
+    )
     args = parser.parse_args()
+
+    if args.finetuned and args.adapter_sweep_id is not None:
+        print("Error: use either --finetuned or --adapter-sweep-id, not both.", file=sys.stderr)
+        sys.exit(1)
 
     if args.finetuned and args.model_type == "bias":
         print(
             "Error: bias model is not saved during finetuning (bias is frozen). "
             "Use --model-type accessibility with --finetuned.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if args.adapter_sweep_id is not None and args.model_type == "bias":
+        print(
+            "Error: adapters are only defined for the accessibility model. "
+            "Use --model-type accessibility with --adapter-sweep-id.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -120,6 +141,19 @@ def main():
         if not model_path.exists():
             print(f"Error: model not found: {model_path}", file=sys.stderr)
             sys.exit(1)
+    adapter_paths = [
+        REPO_ROOT
+        / "models"
+        / args.pseudobulk
+        / "adapters"
+        / args.adapter_sweep_id
+        / f"{args.pseudobulk}_f{fold}.adapter.pt"
+        for fold in range(n_folds)
+    ] if args.adapter_sweep_id is not None else [None] * n_folds
+    for adapter_path in adapter_paths:
+        if adapter_path is not None and not adapter_path.exists():
+            print(f"Error: adapter bundle not found: {adapter_path}", file=sys.stderr)
+            sys.exit(1)
 
     # Build params with defaults, then apply CLI overrides
     params = {
@@ -149,9 +183,16 @@ def main():
     attributions = []
     for fold in range(n_folds):
         # Load model
-        model = torch.load(
-            model_paths[fold], weights_only=False, map_location=torch.device("cpu")
-        )
+        if args.adapter_sweep_id is None:
+            model = torch.load(
+                model_paths[fold], weights_only=False, map_location=torch.device("cpu")
+            )
+        else:
+            model, _manifest = load_accessibility_with_adapter(
+                model_paths[fold],
+                adapter_paths[fold],
+                map_location=torch.device("cpu"),
+            )
         if args.head == "profile":
             model = ProfileWrapper(model)
         elif args.head == "count":
@@ -173,7 +214,10 @@ def main():
         torch.cuda.empty_cache()
 
     # Output directory
-    out_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
+    if args.adapter_sweep_id is not None:
+        out_subdir = f"chrombpnet_adapter_{args.adapter_sweep_id}"
+    else:
+        out_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
     out_dir = REPO_ROOT / "attributions" / out_subdir
     out_dir.mkdir(parents=True, exist_ok=True)
 

@@ -77,6 +77,12 @@ def main():
         default=0.5,
         help="DA fraction used during finetuning; selects model/output subdirectory (default: 0.5)",
     )
+    parser.add_argument(
+        "--adapter-sweep-id",
+        type=str,
+        default=None,
+        help="Use adapter bundles from models/{pseudobulk}/adapters/{adapter_sweep_id}/",
+    )
     # deepliftshap parameters
     parser.add_argument(
         "-b",
@@ -96,6 +102,10 @@ def main():
     parser.add_argument("--time", type=str, default="48:00:00")
     args = parser.parse_args()
 
+    if args.finetuned and args.adapter_sweep_id is not None:
+        print("Error: use either --finetuned or --adapter-sweep-id, not both.", file=sys.stderr)
+        sys.exit(1)
+
     heads = args.head if args.head is not None else ["profile", "count"]
     model_types = (
         args.model_type if args.model_type is not None else ["bias", "accessibility"]
@@ -103,11 +113,14 @@ def main():
 
     fine_tag = "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
     model_subdir = fine_tag if args.finetuned else "torch"
-    out_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
+    if args.adapter_sweep_id is not None:
+        out_subdir = f"chrombpnet_adapter_{args.adapter_sweep_id}"
+    else:
+        out_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
 
-    if args.finetuned and "bias" in model_types:
+    if (args.finetuned or args.adapter_sweep_id is not None) and "bias" in model_types:
         print(
-            "Warning: bias model is not saved during finetuning; skipping bias model type.",
+            "Warning: bias model is not available for finetuned/adapter runs; skipping bias model type.",
             file=sys.stderr,
         )
         model_types = [m for m in model_types if m != "bias"]
@@ -150,6 +163,24 @@ def main():
                     file=sys.stderr,
                 )
                 continue
+            if args.adapter_sweep_id is not None:
+                adapter_paths = [
+                    REPO_ROOT
+                    / "models"
+                    / pseudobulk
+                    / "adapters"
+                    / args.adapter_sweep_id
+                    / f"{pseudobulk}_f{fold}.adapter.pt"
+                    for fold in range(N_FOLDS)
+                ]
+                missing_adapters = [p for p in adapter_paths if not p.exists()]
+                if missing_adapters:
+                    skipped_missing += len(heads)
+                    print(
+                        f"SKIP {pseudobulk}/{model_type}: {len(missing_adapters)} adapter bundle(s) missing",
+                        file=sys.stderr,
+                    )
+                    continue
 
             for head in heads:
                 suffix = da_suffix(args.da_peaks)
@@ -158,13 +189,22 @@ def main():
                     skipped_done += 1
                     continue
 
-                tag = f"_{fine_tag}" if args.finetuned else ""
+                tag = (
+                    f"_adapter_{args.adapter_sweep_id}"
+                    if args.adapter_sweep_id is not None
+                    else (f"_{fine_tag}" if args.finetuned else "")
+                )
                 da_tag = da_suffix(args.da_peaks)
                 job_name = f"deepliftshap{tag}{da_tag}_{pseudobulk}_{model_type}_{head}"
                 script_path = Path(__file__).resolve().parent / "deepliftshap.py"
 
                 finetuned_flags = (
                     f" --finetuned --da-fraction {args.da_fraction}" if args.finetuned else ""
+                )
+                adapter_flags = (
+                    f" --adapter-sweep-id {args.adapter_sweep_id}"
+                    if args.adapter_sweep_id is not None
+                    else ""
                 )
                 da_peaks_flag = f" --da-peaks {args.da_peaks}" if args.da_peaks is not None else ""
                 deepliftshap_cmd = (
@@ -175,6 +215,7 @@ def main():
                     f" -b {args.batch_size}"
                     f" -v"
                     f"{finetuned_flags}"
+                    f"{adapter_flags}"
                     f"{da_peaks_flag}"
                 )
 
