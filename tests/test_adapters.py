@@ -11,6 +11,7 @@ from chrombpnet.adapters import (  # noqa: E402
     LowRankConv1dAdapter,
     LowRankLinearAdapter,
     adapter_parameters,
+    assert_deeplift_shap_compatible,
     count_adapter_parameters,
     inject_adapters,
     load_adapter_bundle,
@@ -58,6 +59,63 @@ def test_linear_adapter_is_identity_at_initialization():
     X = torch.randn(7, 5)
 
     torch.testing.assert_close(adapter(X), linear(X))
+
+
+def test_adapters_are_affine_in_eval_mode():
+    torch.manual_seed(0)
+    adapter = LowRankConv1dAdapter(
+        torch.nn.Conv1d(4, 5, kernel_size=3, padding=1),
+        rank=2,
+        scale=0.5,
+        dropout=0.25,
+    )
+    for parameter in adapter.parameters():
+        if parameter.requires_grad:
+            torch.nn.init.normal_(parameter, mean=0.0, std=0.1)
+    adapter.eval()
+
+    X = torch.randn(2, 4, 11)
+    R = torch.randn(2, 4, 11)
+    mixed = 0.3 * X + 0.7 * R
+
+    torch.testing.assert_close(adapter(mixed), 0.3 * adapter(X) + 0.7 * adapter(R))
+
+
+def test_deeplift_compatibility_requires_dropout_eval_mode():
+    model = TinyChromBPNet()
+    inject_adapters(model.accessibility, targets=["heads_only"], dropout=0.25)
+
+    with pytest.raises(RuntimeError, match="dropout"):
+        assert_deeplift_shap_compatible(model.accessibility)
+
+    model.eval()
+    assert assert_deeplift_shap_compatible(model.accessibility)
+
+
+def test_load_adapter_bundle_preserves_base_model_device(tmp_path):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = TinyChromBPNet()
+    config = inject_adapters(model.accessibility, targets=["heads_only"])
+    manifest = {
+        "format_version": 1,
+        "adapter_config": {
+            "targets": config["targets"],
+            "conv_rank": config["conv_rank"],
+            "linear_rank": config["linear_rank"],
+            "conv_scale": config["conv_scale"],
+            "linear_scale": config["linear_scale"],
+            "dropout": config["dropout"],
+        },
+        "layer_specs": config["layer_specs"],
+    }
+    path = tmp_path / "adapter.pt"
+    save_adapter_bundle(path, model, manifest)
+
+    base = TinyChromBPNet().to(device)
+    loaded, _ = load_adapter_bundle(base, path, map_location=device)
+
+    devices = {parameter.device for parameter in loaded.parameters()}
+    assert devices == {device}
 
 
 def test_only_adapter_parameters_require_grad():

@@ -272,6 +272,7 @@ def main():
         linear_scale=linear_scale,
         dropout=args.dropout,
     )
+    model.to(device)
     trainable_params = count_adapter_parameters(model.accessibility)
     if trainable_params == 0:
         print("Error: no adapter parameters were injected.", file=sys.stderr)

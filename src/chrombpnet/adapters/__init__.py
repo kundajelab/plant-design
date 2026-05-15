@@ -4,6 +4,7 @@ from .layers import LowRankConv1dAdapter, LowRankLinearAdapter
 from .utils import (
     ADAPTER_PRESETS,
     adapter_parameters,
+    assert_deeplift_shap_compatible,
     adapter_state_dict,
     count_adapter_parameters,
     inject_adapters,
@@ -19,6 +20,7 @@ __all__ = [
     "LowRankConv1dAdapter",
     "LowRankLinearAdapter",
     "adapter_parameters",
+    "assert_deeplift_shap_compatible",
     "adapter_state_dict",
     "count_adapter_parameters",
     "inject_adapters",

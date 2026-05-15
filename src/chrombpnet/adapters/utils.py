@@ -51,6 +51,14 @@ def _freeze_module(module):
         parameter.requires_grad = False
 
 
+def _module_device(module):
+    for parameter in module.parameters():
+        return parameter.device
+    for buffer in module.buffers():
+        return buffer.device
+    return torch.device("cpu")
+
+
 def _module_specs(accessibility):
     specs = {}
     for name, module in _iter_adapters(accessibility):
@@ -131,6 +139,30 @@ def count_adapter_parameters(module):
     return sum(parameter.numel() for parameter in adapter_parameters(module))
 
 
+def assert_deeplift_shap_compatible(module):
+    """Validate that injected adapters are affine during DeepLIFT/SHAP.
+
+    Tangermeme's DeepLIFT/SHAP hooks known nonlinear modules and treats all
+    other operations as linear. These adapters are compatible when their only
+    active operations are Conv1d/Linear layers plus addition/scaling. Dropout is
+    allowed in trained adapters, but it must be disabled by eval() before
+    attribution.
+    """
+    for name, adapter in _iter_adapters(module):
+        if isinstance(adapter.dropout, torch.nn.Dropout) and adapter.dropout.training:
+            raise RuntimeError(
+                f"Adapter '{name}' has active dropout. Call model.eval() before "
+                "running DeepLIFT/SHAP."
+            )
+        expected_children = {"base", "down", "up", "dropout"}
+        unexpected = set(dict(adapter.named_children())) - expected_children
+        if unexpected:
+            raise RuntimeError(
+                f"Adapter '{name}' has unexpected child modules: {sorted(unexpected)}"
+            )
+    return True
+
+
 def adapter_state_dict(module):
     """Return only adapter branch weights, excluding frozen base weights."""
     state = {}
@@ -178,6 +210,7 @@ def load_adapter_bundle(model, adapter_path, map_location="cpu"):
     bundle = torch.load(adapter_path, weights_only=False, map_location=map_location)
     manifest = bundle["manifest"]
     config = manifest["adapter_config"]
+    device = _module_device(model)
     inject_adapters(
         model.accessibility,
         targets=config["targets"],
@@ -187,6 +220,7 @@ def load_adapter_bundle(model, adapter_path, map_location="cpu"):
         linear_scale=config["linear_scale"],
         dropout=config.get("dropout", 0.0),
     )
+    model.to(device)
     expected_specs = manifest.get("layer_specs")
     actual_specs = _module_specs(model.accessibility)
     if expected_specs is not None and expected_specs != actual_specs:

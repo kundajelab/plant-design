@@ -24,7 +24,10 @@ from da_peaks import DA_PEAK_CHOICES, da_suffix, resolve_loci_path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from chrombpnet.adapters import load_accessibility_with_adapter  # noqa: E402
+from chrombpnet.adapters import (  # noqa: E402
+    assert_deeplift_shap_compatible,
+    load_accessibility_with_adapter,
+)
 
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
@@ -193,6 +196,8 @@ def main():
                 adapter_paths[fold],
                 map_location=torch.device("cpu"),
             )
+            model.eval()
+            assert_deeplift_shap_compatible(model)
         if args.head == "profile":
             model = ProfileWrapper(model)
         elif args.head == "count":
