@@ -35,18 +35,18 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
 SHORT_LABELS = {
     "bundle_sheath": "BS",
-    "epidermis":     "Epi",
-    "guard":         "GC",
-    "mesophyll":     "Mes",
-    "phloem":        "Phl",
-    "xylem":         "Xyl",
+    "epidermis": "Epi",
+    "guard": "GC",
+    "mesophyll": "Mes",
+    "phloem": "Phl",
+    "xylem": "Xyl",
 }
 
-COLOR_OBS  = "#4878CF"   # lower triangle — observed vs observed
-COLOR_DIAG = "#1a1a2e"   # diagonal       — predicted vs observed (same cell type)
-COLOR_PRED = "#9BB7D4"   # upper triangle — predicted vs predicted
+COLOR_OBS = "#4878CF"  # lower triangle — observed vs observed
+COLOR_DIAG = "#1a1a2e"  # diagonal       — predicted vs observed (same cell type)
+COLOR_PRED = "#9BB7D4"  # upper triangle — predicted vs predicted
 
-PSEUDOCOUNT = 1.0        # added before log10 to handle zero-CPM peaks
+PSEUDOCOUNT = 1.0  # added before log10 to handle zero-CPM peaks
 
 
 def _scatter(ax, x, y, color):
@@ -55,12 +55,26 @@ def _scatter(ax, x, y, color):
     yp = np.log10(y + PSEUDOCOUNT)
     finite = np.isfinite(xp) & np.isfinite(yp)
     r, _ = pearsonr(xp[finite], yp[finite])
-    ax.scatter(x[finite] + PSEUDOCOUNT, y[finite] + PSEUDOCOUNT,
-               s=0.5, alpha=0.12, color=color, rasterized=True, linewidths=0)
+    ax.scatter(
+        x[finite] + PSEUDOCOUNT,
+        y[finite] + PSEUDOCOUNT,
+        s=0.5,
+        alpha=0.12,
+        color=color,
+        rasterized=True,
+        linewidths=0,
+    )
     ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.text(0.06, 0.94, f"r = {r:.2f}", transform=ax.transAxes,
-            fontsize=5.5, va="top", ha="left")
+    ax.text(
+        0.06,
+        0.94,
+        f"r = {r:.2f}",
+        transform=ax.transAxes,
+        fontsize=5.5,
+        va="top",
+        ha="left",
+    )
     ax.tick_params(labelsize=4.5, length=2, width=0.5)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -84,6 +98,12 @@ def main():
         help="DA fraction used during finetuning; selects input file suffix (default: 0.5)",
     )
     parser.add_argument(
+        "--adapter-sweep-id",
+        type=str,
+        default=None,
+        help="Use DA benchmark peak output for this adapter sweep ID",
+    )
+    parser.add_argument(
         "--out-dir",
         type=Path,
         default=REPO_ROOT / "performance_metrics" / "plots",
@@ -91,8 +111,21 @@ def main():
     )
     args = parser.parse_args()
 
-    fine_tag = "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
-    suffix = f"_{fine_tag}" if args.finetuned else ""
+    if args.finetuned and args.adapter_sweep_id is not None:
+        print(
+            "Error: use either --finetuned or --adapter-sweep-id, not both.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    fine_tag = (
+        "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
+    )
+    suffix = (
+        f"_adapter_{args.adapter_sweep_id}"
+        if args.adapter_sweep_id is not None
+        else (f"_{fine_tag}" if args.finetuned else "")
+    )
 
     da_path = (
         REPO_ROOT / "data" / "peaks" / "differential_accessibility" / "da_peaks.csv"
@@ -114,7 +147,16 @@ def main():
                 print(
                     "Run: python src/chrombpnet/benchmark/benchmark_da.py --save-output"
                     + (" --finetuned" if args.finetuned else "")
-                    + (f" --da-fraction {args.da_fraction}" if args.finetuned and args.da_fraction != 0.5 else ""),
+                    + (
+                        f" --adapter-sweep-id {args.adapter_sweep_id}"
+                        if args.adapter_sweep_id is not None
+                        else ""
+                    )
+                    + (
+                        f" --da-fraction {args.da_fraction}"
+                        if args.finetuned and args.da_fraction != 0.5
+                        else ""
+                    ),
                     file=sys.stderr,
                 )
             sys.exit(1)
@@ -132,7 +174,16 @@ def main():
             "Re-run benchmark_da.py with --save-output to regenerate it:\n"
             "  python src/chrombpnet/benchmark/benchmark_da.py --save-output"
             + (" --finetuned" if args.finetuned else "")
-            + (f" --da-fraction {args.da_fraction}" if args.finetuned and args.da_fraction != 0.5 else ""),
+            + (
+                f" --adapter-sweep-id {args.adapter_sweep_id}"
+                if args.adapter_sweep_id is not None
+                else ""
+            )
+            + (
+                f" --da-fraction {args.da_fraction}"
+                if args.finetuned and args.da_fraction != 0.5
+                else ""
+            ),
             file=sys.stderr,
         )
         sys.exit(1)
@@ -141,8 +192,10 @@ def main():
 
     merged = da.merge(peaks, on=["chrom", "start", "end"], how="inner")
     if merged.empty:
-        print("Error: no peaks matched between da_peaks.csv and da_benchmark_peaks.csv",
-              file=sys.stderr)
+        print(
+            "Error: no peaks matched between da_peaks.csv and da_benchmark_peaks.csv",
+            file=sys.stderr,
+        )
         sys.exit(1)
     print(f"Plotting {len(merged)} peaks")
 
@@ -184,7 +237,9 @@ def main():
         "Cross-cell-type ATAC counts  (log₁₀ CPM + 1)\n"
         "Lower: obs vs obs   |   Diagonal: pred vs obs   |   Upper: pred vs pred"
     )
-    if args.finetuned:
+    if args.adapter_sweep_id is not None:
+        title += f"   [adapter: {args.adapter_sweep_id}]"
+    elif args.finetuned:
         title += f"   [{fine_tag}]"
     fig.suptitle(title, fontsize=8, y=1.01)
     fig.tight_layout(h_pad=0.3, w_pad=0.3)

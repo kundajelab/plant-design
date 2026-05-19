@@ -77,17 +77,17 @@ def main():
     parser.add_argument(
         "--scheduler-gpus",
         nargs="+",
-        default=["0", "1", "2", "3"],
+        default=None,
         help="GPU IDs passed to simple_gpu_scheduler inside each sbatch job; omit to run commands sequentially",
     )
-    parser.add_argument("--partition", type=str, default="akundaje")
+    parser.add_argument("--partition", type=str, default="gpu,akundaje,owners")
     parser.add_argument(
         "--constraint", type=str, default="GPU_GEN:AMP|GPU_GEN:LOV|GPU_GEN:HPR"
     )
-    parser.add_argument("--gpus", type=int, default=4)
-    parser.add_argument("--cpus-per-task", type=int, default=16)
+    parser.add_argument("--gpus", type=int, default=1)
+    parser.add_argument("--cpus-per-task", type=int, default=4)
     parser.add_argument("--mem", type=str, default="64G")
-    parser.add_argument("--time", type=str, default="7-00:00:00")
+    parser.add_argument("--time", type=str, default="2-00:00:00")
     parser.add_argument("--numba-threads", type=int, default=4)
     args = parser.parse_args()
 

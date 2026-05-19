@@ -69,10 +69,15 @@ def main():
     args = parser.parse_args()
 
     if args.finetuned and args.adapter_sweep_id is not None:
-        print("Error: use either --finetuned or --adapter-sweep-id, not both.", file=sys.stderr)
+        print(
+            "Error: use either --finetuned or --adapter-sweep-id, not both.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
-    fine_tag = "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
+    fine_tag = (
+        "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
+    )
     model_subdir = fine_tag if args.finetuned else "torch"
     if args.adapter_sweep_id is not None:
         metrics_subdir = f"adapters/{args.adapter_sweep_id}"
@@ -103,15 +108,19 @@ def main():
         / f"{args.pseudobulk}_f{fold}.torch"
         for fold in range(n_folds)
     ]
-    adapter_paths = [
-        REPO_ROOT
-        / "models"
-        / args.pseudobulk
-        / "adapters"
-        / args.adapter_sweep_id
-        / f"{args.pseudobulk}_f{fold}.adapter.pt"
-        for fold in range(n_folds)
-    ] if args.adapter_sweep_id is not None else [None] * n_folds
+    adapter_paths = (
+        [
+            REPO_ROOT
+            / "models"
+            / args.pseudobulk
+            / "adapters"
+            / args.adapter_sweep_id
+            / f"{args.pseudobulk}_f{fold}.adapter.pt"
+            for fold in range(n_folds)
+        ]
+        if args.adapter_sweep_id is not None
+        else [None] * n_folds
+    )
     for model_path in model_paths:
         if not model_path.exists():
             print(f"Error: model not found: {model_path}", file=sys.stderr)

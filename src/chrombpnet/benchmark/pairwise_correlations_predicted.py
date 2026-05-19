@@ -22,6 +22,10 @@ from tangermeme.io import extract_loci
 from tangermeme.predict import predict
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from chrombpnet.adapters import load_model_with_adapter  # noqa: E402
+
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
@@ -70,10 +74,31 @@ def main():
         action="store_true",
         help="Use finetuned models from models/{pseudobulk}/finetuned/ instead of torch/",
     )
+    parser.add_argument(
+        "--da-fraction",
+        type=float,
+        default=0.5,
+        help="DA fraction used during finetuning; selects model/output subdirectory (default: 0.5)",
+    )
+    parser.add_argument(
+        "--adapter-sweep-id",
+        type=str,
+        default=None,
+        help="Use adapter bundles from models/{pseudobulk}/adapters/{adapter_sweep_id}/",
+    )
     args = parser.parse_args()
 
-    model_subdir = "finetuned" if args.finetuned else "torch"
-    suffix = "_finetuned" if args.finetuned else ""
+    if args.finetuned and args.adapter_sweep_id is not None:
+        print("Error: use either --finetuned or --adapter-sweep-id, not both.", file=sys.stderr)
+        sys.exit(1)
+
+    fine_tag = "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
+    model_subdir = fine_tag if args.finetuned else "torch"
+    suffix = (
+        f"_adapter_{args.adapter_sweep_id}"
+        if args.adapter_sweep_id is not None
+        else (f"_{fine_tag}" if args.finetuned else "")
+    )
 
     with open(CHROM_SPLITS_PATH) as f:
         chrom_splits = json.load(f)
@@ -87,10 +112,29 @@ def main():
         ]
         for ps in PSEUDOBULKS
     }
+    adapter_paths = {
+        ps: [
+            REPO_ROOT
+            / "models"
+            / ps
+            / "adapters"
+            / args.adapter_sweep_id
+            / f"{ps}_f{fold}.adapter.pt"
+            for fold in range(n_folds)
+        ]
+        for ps in PSEUDOBULKS
+    } if args.adapter_sweep_id is not None else {
+        ps: [None] * n_folds for ps in PSEUDOBULKS
+    }
     for ps, paths in model_paths.items():
         for p in paths:
             if not p.exists():
                 print(f"Error: model not found: {p}", file=sys.stderr)
+                sys.exit(1)
+    for ps, paths in adapter_paths.items():
+        for p in paths:
+            if p is not None and not p.exists():
+                print(f"Error: adapter bundle not found: {p}", file=sys.stderr)
                 sys.exit(1)
 
     print("Building merged union of peak regions...")
@@ -132,8 +176,10 @@ def main():
 
         for j, ps in enumerate(PSEUDOBULKS):
             print(f"  Predicting {ps}...")
-            model = torch.load(
-                model_paths[ps][fold], weights_only=False, map_location="cpu"
+            model, _manifest = load_model_with_adapter(
+                model_paths[ps][fold],
+                adapter_paths[ps][fold],
+                map_location="cpu",
             )
             pred = predict(model=model, X=X, device=device, batch_size=64, verbose=True)
             # pred[1] is log counts; exp to get counts
@@ -165,7 +211,11 @@ def main():
     print(spearman.to_string(float_format="{:.4f}".format))
 
     # Save results
-    out_dir = REPO_ROOT / "performance_metrics"
+    out_dir = (
+        REPO_ROOT / "performance_metrics" / "adapters" / args.adapter_sweep_id
+        if args.adapter_sweep_id is not None
+        else REPO_ROOT / "performance_metrics"
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
 
     results = {

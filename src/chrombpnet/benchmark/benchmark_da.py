@@ -211,14 +211,19 @@ def main():
     args = parser.parse_args()
 
     if args.finetuned and args.adapter_sweep_id is not None:
-        print("Error: use either --finetuned or --adapter-sweep-id, not both.", file=sys.stderr)
+        print(
+            "Error: use either --finetuned or --adapter-sweep-id, not both.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     fine_tag = (
         "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
     )
     model_subdir = fine_tag if args.finetuned else "torch"
-    result_tag = args.adapter_sweep_id if args.adapter_sweep_id is not None else fine_tag
+    result_tag = (
+        args.adapter_sweep_id if args.adapter_sweep_id is not None else fine_tag
+    )
 
     # Load observed DA values
     if not DA_PATH.exists():
@@ -242,20 +247,22 @@ def main():
         ]
         for ps in PSEUDOBULKS
     }
-    adapter_paths = {
-        ps: [
-            REPO_ROOT
-            / "models"
-            / ps
-            / "adapters"
-            / args.adapter_sweep_id
-            / f"{ps}_f{fold}.adapter.pt"
-            for fold in range(n_folds)
-        ]
-        for ps in PSEUDOBULKS
-    } if args.adapter_sweep_id is not None else {
-        ps: [None] * n_folds for ps in PSEUDOBULKS
-    }
+    adapter_paths = (
+        {
+            ps: [
+                REPO_ROOT
+                / "models"
+                / ps
+                / "adapters"
+                / args.adapter_sweep_id
+                / f"{ps}_f{fold}.adapter.pt"
+                for fold in range(n_folds)
+            ]
+            for ps in PSEUDOBULKS
+        }
+        if args.adapter_sweep_id is not None
+        else {ps: [None] * n_folds for ps in PSEUDOBULKS}
+    )
     for ps, paths in model_paths.items():
         for p in paths:
             if not p.exists():
