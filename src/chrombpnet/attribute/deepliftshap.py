@@ -24,13 +24,25 @@ from da_peaks import DA_PEAK_CHOICES, da_suffix, resolve_loci_path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from chrombpnet.adapters import (  # noqa: E402
-    assert_deeplift_shap_compatible,
+from daicon import (  # noqa: E402
+    iter_adapters,
     load_accessibility_with_adapter,
 )
 
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
+
+
+def assert_deeplift_shap_compatible(module):
+    """Validate that daicon adapters are affine during DeepLIFT/SHAP."""
+    for name, adapter in iter_adapters(module):
+        dropout = getattr(adapter, "dropout", None)
+        if isinstance(dropout, torch.nn.Dropout) and dropout.training:
+            raise RuntimeError(
+                f"Adapter '{name}' has active dropout. Call model.eval() before "
+                "running DeepLIFT/SHAP."
+            )
+    return True
 
 
 def main():

@@ -1,9 +1,14 @@
 # Low-Rank Adapter Handoff
 
-This document describes the ChromBPNet low-rank adapter implementation in this
-repo so it can be ported into an independent codebase. The implementation is
-PyTorch-only and targets bpnet-lite `ChromBPNet` models whose accessibility
-submodel is a bpnet-lite `BPNet`.
+This document describes the ChromBPNet low-rank adapter integration used in
+this repo. The adapter implementation itself now lives in the independent
+`daicon` package and should be installed in the runtime environment:
+
+- `daicon.layers`
+- `daicon.utils`
+
+The implementation is PyTorch-only and targets bpnet-lite `ChromBPNet` models
+whose accessibility submodel is a bpnet-lite `BPNet`.
 
 ## Goal
 
@@ -16,10 +21,10 @@ prediction, benchmarking, and DeepLIFT/SHAP attribution.
 
 ## Core Architecture
 
-The adapter code lives in:
+The adapter code lives in `daicon`:
 
-- `src/chrombpnet/adapters/layers.py`
-- `src/chrombpnet/adapters/utils.py`
+- `daicon.layers`
+- `daicon.utils`
 
 Two adapter wrappers are implemented:
 

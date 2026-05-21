@@ -23,7 +23,7 @@ from tangermeme.predict import predict
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from chrombpnet.adapters import load_model_with_adapter  # noqa: E402
+from daicon import load_model_with_adapter  # noqa: E402
 
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
@@ -165,6 +165,7 @@ def main():
             model_paths[fold],
             adapter_paths[fold],
             map_location=torch.device("cpu"),
+            adapter_root="accessibility",
         )
         preds.append(
             predict(

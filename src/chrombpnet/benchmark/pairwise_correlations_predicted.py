@@ -24,7 +24,7 @@ from tangermeme.predict import predict
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from chrombpnet.adapters import load_model_with_adapter  # noqa: E402
+from daicon import load_model_with_adapter  # noqa: E402
 
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
@@ -180,6 +180,7 @@ def main():
                 model_paths[ps][fold],
                 adapter_paths[ps][fold],
                 map_location="cpu",
+                adapter_root="accessibility",
             )
             pred = predict(model=model, X=X, device=device, batch_size=64, verbose=True)
             # pred[1] is log counts; exp to get counts

@@ -18,13 +18,13 @@ DEFAULT_SWEEP = {
     "targets": [
         "all"
     ],  # ["rconvs", "fconv", "linear", "heads_only", "rconvs+heads", "all"],
-    "conv_rank": [4, 8, 16],
-    "linear_rank": [4, 8],
-    "alpha": [4, 8, 16],
+    "conv_rank": [16],
+    "linear_rank": [4],
+    "alpha": [8],
     "dropout": [0.0],
-    "lr": [1e-4, 3e-4, 1e-3],
+    "lr": [1e-4],
     "weight_decay": [0.0],
-    "da_fraction": [0.8],
+    "da_fraction": [0.5, 0.8],
     "epochs": 100,
     "patience": 10,
     "batch_size": 64,
@@ -45,6 +45,18 @@ def _load_sweep(path):
     merged = DEFAULT_SWEEP.copy()
     merged.update(sweep)
     return merged
+
+
+def _is_default_adapter_combo(combo):
+    return (
+        combo["targets"] == "all"
+        and combo["conv_rank"] == 16
+        and combo["linear_rank"] == 4
+        and combo["alpha"] == 8
+        and combo["dropout"] == 0.0
+        and combo["lr"] == 1e-4
+        and combo["weight_decay"] == 0.0
+    )
 
 
 def main():
@@ -120,11 +132,14 @@ def main():
         target_tag = str(combo["targets"]).replace("+", "_")
         da_tag = str(combo["da_fraction"]).replace(".", "p")
         lr_tag = f"{combo['lr']:g}".replace(".", "p").replace("-", "m")
-        sweep_id = (
-            f"{args.sweep_prefix}_t-{target_tag}"
-            f"_cr{combo['conv_rank']}_lr{combo['linear_rank']}"
-            f"_a{combo['alpha']}_d{combo['dropout']:g}_lr{lr_tag}_da{da_tag}"
-        )
+        if args.sweep_prefix == "adapter" and _is_default_adapter_combo(combo):
+            sweep_id = f"daicon_default_da{da_tag}"
+        else:
+            sweep_id = (
+                f"{args.sweep_prefix}_t-{target_tag}"
+                f"_cr{combo['conv_rank']}_lr{combo['linear_rank']}"
+                f"_a{combo['alpha']}_d{combo['dropout']:g}_lr{lr_tag}_da{da_tag}"
+            )
         for pseudobulk in pseudobulks:
             for fold in folds:
                 cmd = [

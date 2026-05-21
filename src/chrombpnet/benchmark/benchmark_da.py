@@ -31,7 +31,7 @@ from tangermeme.predict import predict
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from chrombpnet.adapters import load_model_with_adapter  # noqa: E402
+from daicon import load_model_with_adapter  # noqa: E402
 
 # Import DA metric functions from the preprocessing script
 sys.path.insert(
@@ -321,6 +321,7 @@ def main():
                 model_paths[ps][fold],
                 adapter_paths[ps][fold],
                 map_location="cpu",
+                adapter_root="accessibility",
             )
             pred = predict(
                 model=model,
