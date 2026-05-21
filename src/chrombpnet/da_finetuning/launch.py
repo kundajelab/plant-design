@@ -4,8 +4,7 @@
 This launcher is for the small set of named runs used downstream:
 
 - full-model fine-tuning at 0.5 and 0.8 DA fractions
-- daicon default adapter fine-tuning at 0.5 and 0.8 DA fractions
-- daicon optimized adapter fine-tuning at 0.5 and 0.8 DA fractions
+- daicon adapter fine-tuning at 0.5 and 0.8 DA fractions
 
 Use ``launch_adapter_sweep.py`` for the full adapter hyperparameter sweep.
 """
@@ -21,18 +20,7 @@ PSEUDOBULKS_PATH = REPO_ROOT / "configs" / "pseudobulks.txt"
 N_FOLDS = 5
 DA_FRACTIONS = (0.5, 0.8)
 
-RUN_GROUPS = ("full", "adapter_default", "adapter_optimized")
-
-OPTIMIZED_ADAPTER = {
-    "targets": ["all"],
-    "conv_rank": 16,
-    "linear_rank": 4,
-    "conv_scale": None,
-    "linear_scale": None,
-    "dropout": 0.0,
-    "lr": 1e-4,
-    "weight_decay": 0.0,
-}
+RUN_GROUPS = ("full", "adapter")
 
 
 def da_tag(da_fraction):
@@ -45,10 +33,6 @@ def full_tag(da_fraction):
 
 def default_adapter_run_id(da_fraction):
     return f"daicon_default_da{da_tag(da_fraction)}"
-
-
-def optimized_adapter_run_id(da_fraction):
-    return f"daicon_optimized_da{da_tag(da_fraction)}"
 
 
 def quote_command(parts):
@@ -118,7 +102,7 @@ def build_full_job(args, pseudobulk, fold, da_fraction):
     }
 
 
-def build_default_adapter_job(args, pseudobulk, fold, da_fraction):
+def build_adapter_job(args, pseudobulk, fold, da_fraction):
     script = REPO_ROOT / "src" / "chrombpnet" / "da_finetuning" / "finetune_da.py"
     run_id = default_adapter_run_id(da_fraction)
     command = [
@@ -144,68 +128,7 @@ def build_default_adapter_job(args, pseudobulk, fold, da_fraction):
         / f"{pseudobulk}_f{fold}.log.tsv"
     )
     return {
-        "run_group": "adapter_default",
-        "run_id": run_id,
-        "command": quote_command(command),
-        "finish_path": finish_path,
-    }
-
-
-def build_optimized_adapter_job(args, pseudobulk, fold, da_fraction):
-    script = REPO_ROOT / "src" / "chrombpnet" / "da_finetuning" / "finetune_da.py"
-    run_id = optimized_adapter_run_id(da_fraction)
-    command = [
-        "python",
-        script,
-        "-p",
-        pseudobulk,
-        "-f",
-        fold,
-        "--mode",
-        "adapter",
-        "--adapter-run-id",
-        run_id,
-        "--adapter-targets",
-        *OPTIMIZED_ADAPTER["targets"],
-        "--conv-rank",
-        OPTIMIZED_ADAPTER["conv_rank"],
-        "--linear-rank",
-        OPTIMIZED_ADAPTER["linear_rank"],
-        "--dropout",
-        OPTIMIZED_ADAPTER["dropout"],
-        "--weight-decay",
-        OPTIMIZED_ADAPTER["weight_decay"],
-        "--lr",
-        OPTIMIZED_ADAPTER["lr"],
-        "--da-fraction",
-        da_fraction,
-        "--epochs",
-        args.epochs,
-        "--patience",
-        args.patience,
-        "--batch-size",
-        args.batch_size,
-        "--jitter",
-        args.jitter,
-        "--alpha",
-        args.loss_alpha,
-        "-v",
-    ]
-    if OPTIMIZED_ADAPTER["conv_scale"] is not None:
-        command.extend(["--conv-scale", OPTIMIZED_ADAPTER["conv_scale"]])
-    if OPTIMIZED_ADAPTER["linear_scale"] is not None:
-        command.extend(["--linear-scale", OPTIMIZED_ADAPTER["linear_scale"]])
-
-    finish_path = (
-        REPO_ROOT
-        / "models"
-        / pseudobulk
-        / "adapters"
-        / run_id
-        / f"{pseudobulk}_f{fold}.log.tsv"
-    )
-    return {
-        "run_group": "adapter_optimized",
+        "run_group": "adapter",
         "run_id": run_id,
         "command": quote_command(command),
         "finish_path": finish_path,
@@ -219,8 +142,7 @@ def build_jobs(args):
 
     builders = {
         "full": build_full_job,
-        "adapter_default": build_default_adapter_job,
-        "adapter_optimized": build_optimized_adapter_job,
+        "adapter": build_adapter_job,
     }
     jobs = {}
     for run_group in args.run:
