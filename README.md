@@ -164,7 +164,8 @@ wrapper around `finetune_da.py --mode adapter`.
 
 Use the standard launcher to submit full-model DA fine-tuning plus daicon
 adapter runs. It submits one SLURM job per run group, pseudobulk, and fold,
-with both 0.5 and 0.8 DA fractions by default:
+with both 0.5 and 0.8 DA fractions by default. Adapter fine-tuning uses
+`--adapter-lr 0.001` by default:
 
 ```bash
 python src/chrombpnet/da_finetuning/launch.py --dry-run

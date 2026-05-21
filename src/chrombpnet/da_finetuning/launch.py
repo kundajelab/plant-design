@@ -21,6 +21,8 @@ N_FOLDS = 5
 DA_FRACTIONS = (0.5, 0.8)
 
 RUN_GROUPS = ("full", "adapter")
+DEFAULT_FULL_LR = 1e-4
+DEFAULT_ADAPTER_LR = 1e-3
 
 
 def da_tag(da_fraction):
@@ -54,7 +56,7 @@ def load_pseudobulks(selected):
     return [p for p in PSEUDOBULKS_PATH.read_text().splitlines() if p.strip()]
 
 
-def common_training_args(args):
+def common_training_args(args, lr):
     return [
         "--epochs",
         args.epochs,
@@ -67,7 +69,7 @@ def common_training_args(args):
         "--alpha",
         args.loss_alpha,
         "--lr",
-        args.lr,
+        lr,
     ]
 
 
@@ -84,7 +86,7 @@ def build_full_job(args, pseudobulk, fold, da_fraction):
         "full",
         "--da-fraction",
         da_fraction,
-        *common_training_args(args),
+        *common_training_args(args, args.full_lr),
         "-v",
     ]
     finish_path = (
@@ -116,7 +118,7 @@ def build_adapter_job(args, pseudobulk, fold, da_fraction):
         "adapter",
         "--da-fraction",
         da_fraction,
-        *common_training_args(args),
+        *common_training_args(args, args.adapter_lr),
         "-v",
     ]
     finish_path = (
@@ -265,7 +267,18 @@ def main():
     parser.add_argument("--pseudobulk", action="append", default=None)
     parser.add_argument("--fold", type=int, action="append", default=None)
     parser.add_argument("--da-fraction", type=float, action="append", default=None)
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument(
+        "--full-lr",
+        type=float,
+        default=DEFAULT_FULL_LR,
+        help=f"Learning rate for full-model fine-tuning (default: {DEFAULT_FULL_LR:g})",
+    )
+    parser.add_argument(
+        "--adapter-lr",
+        type=float,
+        default=DEFAULT_ADAPTER_LR,
+        help=f"Learning rate for adapter fine-tuning (default: {DEFAULT_ADAPTER_LR:g})",
+    )
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--patience", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=64)
