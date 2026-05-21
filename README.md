@@ -160,11 +160,24 @@ models/<pseudobulk>/adapters/daicon_default_da0p8/<pseudobulk>_f<fold>.adapter.p
 ```
 
 The legacy `finetune_adapters.py` CLI remains available as a compatibility
-wrapper around `finetune_da.py --mode adapter`. Use the sweep launcher to submit
-adapter training jobs. With no config, it launches the daicon default adapter
-settings for both 0.5 and 0.8 DA fractions; explicit JSON configs still run
-custom sweeps. It submits one SLURM job per pseudobulk/fold and uses the final
-`.log.tsv` as the completion marker:
+wrapper around `finetune_da.py --mode adapter`.
+
+Use the standard launcher to submit full-model DA fine-tuning plus default and
+optimized daicon adapter runs. It submits one SLURM job per run group,
+pseudobulk, and fold, with both 0.5 and 0.8 DA fractions by default:
+
+```bash
+python src/chrombpnet/da_finetuning/launch.py --dry-run
+
+python src/chrombpnet/da_finetuning/launch.py \
+    --run full \
+    --run adapter_default \
+    --run adapter_optimized
+```
+
+Use the sweep launcher for the broad adapter hyperparameter grid. It submits one
+SLURM job per pseudobulk/fold and uses the final `.log.tsv` as the completion
+marker:
 
 ```bash
 python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
