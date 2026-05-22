@@ -1,4 +1,4 @@
-"""Plot base vs finetuned vs finetuned_0.8 model performance.
+"""Plot base, full finetuned, and daicon adapter model performance.
 
 Reads structured JSON outputs from benchmark.py, benchmark_da.py, and
 pairwise_correlations_predicted.py, then produces comparison figures saved as
@@ -17,6 +17,7 @@ Usage:
 import argparse
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib
@@ -28,10 +29,70 @@ matplotlib.rcParams["pdf.fonttype"] = 42  # editable text in PDFs
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
 
+
+@dataclass(frozen=True)
+class ModelSpec:
+    label: str
+    color: str
+    cross_dir: Path
+    da_path: Path
+    pairwise_path: Path
+
+
+def adapter_spec(label, color, run_id):
+    return ModelSpec(
+        label,
+        color,
+        REPO_ROOT / "performance_metrics" / "adapters" / run_id,
+        REPO_ROOT
+        / "performance_metrics"
+        / "differential_accessibility"
+        / f"da_benchmark_adapter_{run_id}.json",
+        REPO_ROOT
+        / "performance_metrics"
+        / "adapters"
+        / run_id
+        / f"pairwise_correlations_predicted_adapter_{run_id}.json",
+    )
+
+
 MODELS = [
-    ("Base", "#4878CF"),
-    ("Finetuned 50:50", "#D65F5F"),
-    ("Finetuned 80:20", "#6ACC65"),
+    ModelSpec(
+        "Base",
+        "#4878CF",
+        REPO_ROOT / "performance_metrics" / "chrombpnet",
+        REPO_ROOT
+        / "performance_metrics"
+        / "differential_accessibility"
+        / "da_benchmark.json",
+        REPO_ROOT / "performance_metrics" / "pairwise_correlations_predicted.json",
+    ),
+    ModelSpec(
+        "Finetuned 50:50",
+        "#D65F5F",
+        REPO_ROOT / "performance_metrics" / "chrombpnet_finetuned",
+        REPO_ROOT
+        / "performance_metrics"
+        / "differential_accessibility"
+        / "da_benchmark_finetuned.json",
+        REPO_ROOT
+        / "performance_metrics"
+        / "pairwise_correlations_predicted_finetuned.json",
+    ),
+    ModelSpec(
+        "Finetuned 80:20",
+        "#6ACC65",
+        REPO_ROOT / "performance_metrics" / "chrombpnet_finetuned_0.8",
+        REPO_ROOT
+        / "performance_metrics"
+        / "differential_accessibility"
+        / "da_benchmark_finetuned_0.8.json",
+        REPO_ROOT
+        / "performance_metrics"
+        / "pairwise_correlations_predicted_finetuned_0.8.json",
+    ),
+    adapter_spec("Adapter 50:50", "#B47CC7", "daicon_default_da0p5"),
+    adapter_spec("Adapter 80:20", "#C4AD66", "daicon_default_da0p8"),
 ]
 
 
@@ -72,7 +133,7 @@ def grouped_bars(
                used as ±1 SD error bars.
     """
     n = len(vals_list)
-    w = 0.22
+    w = min(0.22, 0.8 / max(n, 1))
     x = np.arange(len(groups))
     offsets = np.linspace(-(n - 1) / 2, (n - 1) / 2, n) * w
     for i, (vals, label, color, offset) in enumerate(
@@ -142,18 +203,16 @@ def annotate_heatmap(ax, mat, *, fmt="{:.2f}", threshold=0.5):
 
 
 def plot_cross_loci(pseudobulks, out_dir, verbose=False):
-    dirs = [
-        REPO_ROOT / "performance_metrics" / "chrombpnet",
-        REPO_ROOT / "performance_metrics" / "finetuned",
-        REPO_ROOT / "performance_metrics" / "finetuned_0.8",
+    all_data = [
+        {ps: load_json(model.cross_dir / f"{ps}.json") for ps in pseudobulks}
+        for model in MODELS
     ]
-    all_data = [{ps: load_json(d / f"{ps}.json") for ps in pseudobulks} for d in dirs]
-
     available = [all(data[ps] is not None for ps in pseudobulks) for data in all_data]
-    for (label, _), avail, d in zip(MODELS, available, dirs):
+    for model, avail in zip(MODELS, available):
         if not avail:
             print(
-                f"Warning: skipping {label} in cross-loci figure — missing JSONs in {d}",
+                f"Warning: skipping {model.label} in cross-loci figure — "
+                f"missing JSONs in {model.cross_dir}",
                 file=sys.stderr,
             )
 
@@ -165,8 +224,8 @@ def plot_cross_loci(pseudobulks, out_dir, verbose=False):
         )
         return
 
-    labels = [m[0] for m, _ in active]
-    colors = [m[1] for m, _ in active]
+    labels = [m.label for m, _ in active]
+    colors = [m.color for m, _ in active]
     datasets = [d for _, d in active]
 
     metrics = [
@@ -219,23 +278,11 @@ def plot_cross_loci(pseudobulks, out_dir, verbose=False):
 
 def plot_da_log2fc(out_dir, verbose=False):
     """Two-panel figure: per-cell-type log2FC Pearson under all / tau-filtered peaks."""
-    paths = [
-        REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / "da_benchmark.json",
-        REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / "da_benchmark_finetuned.json",
-        REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / "da_benchmark_finetuned_0.8.json",
-    ]
+    paths = [model.da_path for model in MODELS]
     all_data = [load_json(p) for p in paths]
     available = [d is not None for d in all_data]
-    for (label, _), avail, p in zip(MODELS, available, paths):
+    for model, avail, p in zip(MODELS, available, paths):
+        label = model.label
         if not avail:
             print(f"Warning: {label} DA benchmark JSON not found: {p}", file=sys.stderr)
     if not available[0]:
@@ -243,8 +290,8 @@ def plot_da_log2fc(out_dir, verbose=False):
         sys.exit(1)
 
     active = [(m, d) for m, avail, d in zip(MODELS, available, all_data) if avail]
-    labels = [m[0] for m, _ in active]
-    colors = [m[1] for m, _ in active]
+    labels = [m.label for m, _ in active]
+    colors = [m.color for m, _ in active]
     datasets = [d for _, d in active]
 
     tau_threshold = datasets[0].get("tau_threshold", 0.75)
@@ -294,24 +341,12 @@ def plot_da_log2fc(out_dir, verbose=False):
 
 
 def plot_da_benchmark(out_dir, verbose=False):
-    paths = [
-        REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / "da_benchmark.json",
-        REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / "da_benchmark_finetuned.json",
-        REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / "da_benchmark_finetuned_0.8.json",
-    ]
+    paths = [model.da_path for model in MODELS]
     all_data = [load_json(p) for p in paths]
 
     available = [d is not None for d in all_data]
-    for (label, _), avail, p in zip(MODELS, available, paths):
+    for model, avail, p in zip(MODELS, available, paths):
+        label = model.label
         if not avail:
             print(f"Warning: {label} DA benchmark JSON not found: {p}", file=sys.stderr)
 
@@ -320,13 +355,13 @@ def plot_da_benchmark(out_dir, verbose=False):
         sys.exit(1)
     if not any(available[1:]):
         print(
-            "Error: at least one finetuned da_benchmark JSON is required.",
+            "Error: at least one non-base da_benchmark JSON is required.",
             file=sys.stderr,
         )
         sys.exit(1)
 
     active = [(m, d) for m, avail, d in zip(MODELS, available, all_data) if avail]
-    labels = [m[0] for m, _ in active]
+    labels = [m.label for m, _ in active]
     datasets = [d for _, d in active]
     n_models = len(active)
 
@@ -362,7 +397,9 @@ def plot_da_benchmark(out_dir, verbose=False):
 
     # Row 0: pairwise log2FC Pearson heatmaps (one per model)
     im = None
-    for col, ((_label, color), data) in enumerate(active):
+    for col, (model, data) in enumerate(active):
+        _label = model.label
+        color = model.color
         ax = axes[0, col]
         mat = pairwise_to_matrix(data["pairwise_log2fc"], "pearson_pairwise_filtered")
         cmap = matplotlib.colormaps["viridis"].copy()
@@ -395,7 +432,7 @@ def plot_da_benchmark(out_dir, verbose=False):
 
     # Row 1: specificity accuracy bar charts
     acc_groups = ["All peaks", f"Tau≥{tau_threshold}", f"|log2FC|≥{log2fc_threshold}"]
-    acc_colors = [m[1] for m, _ in active]
+    acc_colors = [m.color for m, _ in active]
     grouped_bars(
         axes[1, 0],
         acc_groups,
@@ -465,23 +502,11 @@ def plot_da_benchmark(out_dir, verbose=False):
 
 def plot_da_pairwise_log2fc(out_dir, verbose=False):
     """Standalone figure: pairwise log2FC Pearson heatmaps, all peaks vs filtered."""
-    paths = [
-        REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / "da_benchmark.json",
-        REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / "da_benchmark_finetuned.json",
-        REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / "da_benchmark_finetuned_0.8.json",
-    ]
+    paths = [model.da_path for model in MODELS]
     all_data = [load_json(p) for p in paths]
     available = [d is not None for d in all_data]
-    for (label, _), avail, p in zip(MODELS, available, paths):
+    for model, avail, p in zip(MODELS, available, paths):
+        label = model.label
         if not avail:
             print(f"Warning: {label} DA benchmark JSON not found: {p}", file=sys.stderr)
     if not available[0]:
@@ -517,7 +542,9 @@ def plot_da_pairwise_log2fc(out_dir, verbose=False):
     metric_keys = ["pearson", "pearson_pairwise_filtered"]
 
     im = None
-    for col, ((model_label, _color), data) in enumerate(active):
+    for col, (model, data) in enumerate(active):
+        model_label = model.label
+        _color = model.color
         for row, (metric_key, row_title) in enumerate(zip(metric_keys, row_titles)):
             ax = axes[row, col]
             mat = pairwise_to_matrix(data["pairwise_log2fc"], metric_key)
@@ -561,23 +588,11 @@ def plot_da_pairwise_log2fc(out_dir, verbose=False):
 
 def plot_da_contrast_metrics(out_dir, verbose=False):
     """Compact heatmaps for the new contrast-specific DA metrics."""
-    paths = [
-        REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / "da_benchmark.json",
-        REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / "da_benchmark_finetuned.json",
-        REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / "da_benchmark_finetuned_0.8.json",
-    ]
+    paths = [model.da_path for model in MODELS]
     all_data = [load_json(p) for p in paths]
     available = [d is not None for d in all_data]
-    for (label, _), avail, p in zip(MODELS, available, paths):
+    for model, avail, p in zip(MODELS, available, paths):
+        label = model.label
         if not avail:
             print(f"Warning: {label} DA benchmark JSON not found: {p}", file=sys.stderr)
 
@@ -642,7 +657,9 @@ def plot_da_contrast_metrics(out_dir, verbose=False):
     )
 
     row_ims = [None] * len(rows)
-    for col, ((model_label, _color), data) in enumerate(active):
+    for col, (model, data) in enumerate(active):
+        model_label = model.label
+        _color = model.color
         for row_idx, (
             section,
             metric_key,
@@ -688,16 +705,7 @@ def plot_da_contrast_metrics(out_dir, verbose=False):
 def plot_pairwise_heatmaps(out_dir, verbose=False):
     sources = [
         (REPO_ROOT / "performance_metrics" / "pairwise_correlations.json", "Observed"),
-        (
-            REPO_ROOT / "performance_metrics" / "pairwise_correlations_predicted.json",
-            "Base (predicted)",
-        ),
-        (
-            REPO_ROOT
-            / "performance_metrics"
-            / "pairwise_correlations_predicted_finetuned.json",
-            "Finetuned 50:50",
-        ),
+        *[(model.pairwise_path, model.label) for model in MODELS],
     ]
     panels = [(load_json(p), title) for p, title in sources]
     panels = [(d, title) for d, title in panels if d is not None]

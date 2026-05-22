@@ -7,6 +7,10 @@ def finetuned_tag(da_fraction):
     return "finetuned" if da_fraction == 0.5 else f"finetuned_{da_fraction:g}"
 
 
+def finetuned_metrics_subdir(da_fraction):
+    return f"chrombpnet_{finetuned_tag(da_fraction)}"
+
+
 def daicon_adapter_id(da_fraction):
     da_tag = str(da_fraction).replace(".", "p")
     return f"daicon_default_da{da_tag}"
@@ -63,7 +67,7 @@ def resolve_model_variant(args):
         result_tag = adapter_id
     elif args.finetuned:
         suffix = f"_{fine_tag}"
-        metrics_subdir = fine_tag
+        metrics_subdir = finetuned_metrics_subdir(args.da_fraction)
         predictions_subdir = fine_tag
         result_tag = fine_tag
     else:

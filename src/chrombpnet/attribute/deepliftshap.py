@@ -23,11 +23,13 @@ from da_peaks import DA_PEAK_CHOICES, da_suffix, resolve_loci_path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
+sys.path.insert(0, str(REPO_ROOT / "src" / "chrombpnet" / "benchmark"))
 
 from daicon import (  # noqa: E402
     iter_adapters,
     load_accessibility_with_adapter,
 )
+from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
 
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
@@ -84,28 +86,16 @@ def main():
     )
     parser.add_argument("-b", "--batch-size", type=int, default=64)
     parser.add_argument("-v", "--verbose", action="store_true")
-    parser.add_argument(
-        "--finetuned",
-        action="store_true",
-        help="Use finetuned models instead of base torch/ models",
-    )
-    parser.add_argument(
-        "--da-fraction",
-        type=float,
-        default=0.5,
-        help="DA fraction used during finetuning; selects model/output subdirectory (default: 0.5)",
-    )
-    parser.add_argument(
-        "--adapter-sweep-id",
-        type=str,
-        default=None,
-        help="Use adapter bundles from models/{pseudobulk}/adapters/{adapter_sweep_id}/",
+    add_model_variant_args(
+        parser,
+        finetuned_help="Use finetuned accessibility models instead of base torch/ models",
+        adapter_help="Use default daicon adapter bundles for the selected DA fraction",
     )
     args = parser.parse_args()
-
-    if args.finetuned and args.adapter_sweep_id is not None:
-        print("Error: use either --finetuned or --adapter-sweep-id, not both.", file=sys.stderr)
-        sys.exit(1)
+    variant = resolve_model_variant(args)
+    fine_tag = variant["fine_tag"]
+    model_subdir = variant["model_subdir"]
+    adapter_id = variant["adapter_id"]
 
     if args.finetuned and args.model_type == "bias":
         print(
@@ -114,15 +104,13 @@ def main():
             file=sys.stderr,
         )
         sys.exit(1)
-    if args.adapter_sweep_id is not None and args.model_type == "bias":
+    if adapter_id is not None and args.model_type == "bias":
         print(
             "Error: adapters are only defined for the accessibility model. "
-            "Use --model-type accessibility with --adapter-sweep-id.",
+            "Use --model-type accessibility with --adapter or --adapter-run-id.",
             file=sys.stderr,
         )
         sys.exit(1)
-
-    fine_tag = "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
 
     # Load chrom splits
     with open(CHROM_SPLITS_PATH, "r") as f:
@@ -146,7 +134,6 @@ def main():
             sys.exit(1)
 
     # Resolve model directory and verify that all models exist
-    model_subdir = fine_tag if args.finetuned else "torch"
     model_dir = REPO_ROOT / "models" / args.pseudobulk / model_subdir
     model_paths = [
         model_dir / f"{args.pseudobulk}_f{fold}.{args.model_type}.torch"
@@ -161,10 +148,10 @@ def main():
         / "models"
         / args.pseudobulk
         / "adapters"
-        / args.adapter_sweep_id
+        / adapter_id
         / f"{args.pseudobulk}_f{fold}.adapter.pt"
         for fold in range(n_folds)
-    ] if args.adapter_sweep_id is not None else [None] * n_folds
+    ] if adapter_id is not None else [None] * n_folds
     for adapter_path in adapter_paths:
         if adapter_path is not None and not adapter_path.exists():
             print(f"Error: adapter bundle not found: {adapter_path}", file=sys.stderr)
@@ -198,7 +185,7 @@ def main():
     attributions = []
     for fold in range(n_folds):
         # Load model
-        if args.adapter_sweep_id is None:
+        if adapter_id is None:
             model = torch.load(
                 model_paths[fold], weights_only=False, map_location=torch.device("cpu")
             )
@@ -231,8 +218,8 @@ def main():
         torch.cuda.empty_cache()
 
     # Output directory
-    if args.adapter_sweep_id is not None:
-        out_subdir = f"chrombpnet_adapter_{args.adapter_sweep_id}"
+    if adapter_id is not None:
+        out_subdir = f"chrombpnet_adapter_{adapter_id}"
     else:
         out_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
     out_dir = REPO_ROOT / "attributions" / out_subdir

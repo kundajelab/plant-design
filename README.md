@@ -141,6 +141,8 @@ Use `--da-fraction 0.8` to save the 80:20 DA replay run under
 Adapter fine-tuning freezes the base ChromBPNet model and trains only small
 low-rank residual adapters from `daicon`. Adapter bundles are saved separately
 and are loaded onto the matching base fold model at prediction/attribution time.
+The frozen bias and accessibility base weights are not included in the adapter
+state dict; only adapter branch weights are saved.
 
 The main DA fine-tuning entrypoint supports daicon adapter mode. By default it
 uses the daicon BPNet defaults selected from the parameter sweep: all BPNet
@@ -162,6 +164,12 @@ models/<pseudobulk>/adapters/daicon_default_da0p5/<pseudobulk>_f<fold>.config.js
 models/<pseudobulk>/adapters/daicon_default_da0p5/<pseudobulk>_f<fold>.log.tsv
 models/<pseudobulk>/adapters/daicon_default_da0p8/<pseudobulk>_f<fold>.adapter.pt
 ```
+
+The `.adapter.pt` bundle contains a manifest plus adapter-only `state_dict`.
+The manifest records the pseudobulk, fold, base model path, adapter config,
+layer specs, trainable parameter count, and training hyperparameters. Use the
+final `.log.tsv` as the completion marker because the best adapter checkpoint is
+written during training before the loop finishes.
 
 The legacy `finetune_adapters.py` CLI remains available as a compatibility
 wrapper around `finetune_da.py --mode adapter`.
@@ -200,28 +208,26 @@ python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
     --check-finished
 ```
 
-Benchmark a trained adapter sweep:
+Benchmark the active model set (base, both full-finetuned models, and both
+default daicon adapter models):
 
 ```bash
-python src/chrombpnet/benchmark/benchmark_lora_sweep.py \
-    --sweep-id <sweep_id> \
-    --dry-run
-
-python src/chrombpnet/benchmark/benchmark_lora_sweep.py \
-    --sweep-id <sweep_id>
+python src/chrombpnet/benchmark/launch.py --dry-run
+python src/chrombpnet/benchmark/launch.py
 ```
 
-Summarize and plot completed adapter benchmarks, including base and full-model
-fine-tuned references:
+Summarize and plot the active model benchmark outputs:
 
 ```bash
-python src/chrombpnet/benchmark/plot_lora_sweep.py \
-    --sweep-id <sweep_id>
+python src/chrombpnet/benchmark/plot_benchmark.py
 ```
 
-Pick the best LoRA adapter model from the summary CSV:
+The LoRA sweep benchmark and selection scripts are development-only utilities
+for choosing adapter hyperparameters:
 
 ```bash
+python src/chrombpnet/benchmark/benchmark_lora_sweep.py --sweep-id <sweep_id>
+python src/chrombpnet/benchmark/plot_lora_sweep.py --sweep-id <sweep_id>
 python src/chrombpnet/benchmark/select_best_lora_model.py \
     --summary performance_metrics/plots/lora_sweep/lora_sweep_summary.csv
 ```
@@ -246,21 +252,36 @@ done
 Then compute DeepLIFT/SHAP hypothetical attributions on a SLURM cluster:
 
 ```bash
-export REPO_ROOT=/path/to/plant-design
-sbatch src/chrombpnet/attribute/launch.sh
+python src/chrombpnet/attribute/launch.py --model accessibility
 ```
 
-`launch.sh` submits an 8-task array (4 pseudobulks × 2 heads: profile, count) for the accessibility model. Attributions are saved to `attributions/{pseudobulk}_{model_type}_{head}.npz`, and one-hot-encoded sequences to `attributions/{pseudobulk}_ohe.npz`.
+`launch.py` submits one SLURM job per pseudobulk, model type, and head.
+Attributions are saved under `attributions/chrombpnet/`, and one-hot-encoded
+sequences to `attributions/chrombpnet/`.
 
-Adapter attribution is supported by passing the trained adapter sweep ID through
-the attribution launcher or DeepLIFT script:
+Default daicon adapter attribution is supported through the attribution launcher:
+
+```bash
+python src/chrombpnet/attribute/launch.py \
+    --model accessibility \
+    --adapter \
+    --da-fraction 0.5
+
+python src/chrombpnet/attribute/launch.py \
+    --model accessibility \
+    --adapter \
+    --da-fraction 0.8
+```
+
+Custom adapter sweep/run attribution is supported by passing the trained adapter
+run ID through the attribution launcher or DeepLIFT script:
 
 ```bash
 python src/chrombpnet/attribute/deepliftshap.py \
     -p <pseudobulk> \
     -m accessibility \
     --head profile \
-    --adapter-sweep-id <sweep_id>
+    --adapter-run-id <adapter_id>
 ```
 
 `daicon` adapters are compatible with tangermeme DeepLIFT/SHAP in evaluation

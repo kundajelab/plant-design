@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Submit one SLURM adapter sweep job per pseudobulk and data fold."""
+"""Submit one SLURM adapter sweep job per pseudobulk and data fold.
+For development/optimization of adapter hyperparameters."""
 
 import argparse
 import itertools

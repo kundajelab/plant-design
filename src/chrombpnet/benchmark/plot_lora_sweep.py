@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Summarize and plot ChromBPNet low-rank adapter sweep benchmarks.
+"""Development-only summary plots for ChromBPNet low-rank adapter sweeps.
 
 Reads benchmark outputs produced by benchmark_lora_sweep.py and produces a
 summary CSV plus compact PDF heatmaps. By default, summaries include the base
 ChromBPNet and full-model finetuned references.
+
+Use plot_benchmark.py for the active benchmark path.
 """
 
 import argparse
@@ -27,16 +29,14 @@ REFERENCE_MODELS = {
     },
     "finetuned": {
         "label": "Finetuned 50:50",
-        "cross_dir": REPO_ROOT / "performance_metrics" / "finetuned",
-        "cross_fallback_dir": REPO_ROOT / "performance_metrics" / "chrombpnet_finetuned",
+        "cross_dir": REPO_ROOT / "performance_metrics" / "chrombpnet_finetuned",
         "da_path": REPO_ROOT / "performance_metrics" / "differential_accessibility" / "da_benchmark_finetuned.json",
         "pairwise_path": REPO_ROOT / "performance_metrics" / "pairwise_correlations_predicted_finetuned.json",
         "benchmark_flags": ["--finetuned"],
     },
     "finetuned_0.8": {
         "label": "Finetuned 80:20",
-        "cross_dir": REPO_ROOT / "performance_metrics" / "finetuned_0.8",
-        "cross_fallback_dir": REPO_ROOT / "performance_metrics" / "chrombpnet_finetuned_0.8",
+        "cross_dir": REPO_ROOT / "performance_metrics" / "chrombpnet_finetuned_0.8",
         "da_path": REPO_ROOT / "performance_metrics" / "differential_accessibility" / "da_benchmark_finetuned_0.8.json",
         "pairwise_path": REPO_ROOT / "performance_metrics" / "pairwise_correlations_predicted_finetuned_0.8.json",
         "benchmark_flags": ["--finetuned", "--da-fraction", "0.8"],
@@ -96,9 +96,7 @@ def collect_cross_loci_rows(sweep_ids, pseudobulks, include_references=True):
                 model_id,
                 "reference",
                 spec["label"],
-                spec["cross_dir"]
-                if (spec["cross_dir"] / f"{pseudobulks[0]}.json").exists()
-                else spec.get("cross_fallback_dir", spec["cross_dir"]),
+                spec["cross_dir"],
             )
             for model_id, spec in REFERENCE_MODELS.items()
         )

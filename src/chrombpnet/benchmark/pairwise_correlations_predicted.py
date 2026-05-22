@@ -23,9 +23,6 @@ from tangermeme.predict import predict
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
-DAICON_SRC = Path("/Users/adamhe/github/daicon/src")
-if DAICON_SRC.exists() and str(DAICON_SRC) not in sys.path:
-    sys.path.insert(0, str(DAICON_SRC))
 
 from daicon import load_model_with_adapter  # noqa: E402
 from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402

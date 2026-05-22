@@ -20,3 +20,7 @@ time python launch.py --da-peaks specific_union --model accessibility --time 6:0
 time python launch.py --da-peaks specific_union --model accessibility --finetuned --time 6:00:00
 
 time python launch.py --da-peaks specific_union --model accessibility --finetuned --da-fraction 0.8 --time 6:00:00
+
+time python launch.py --da-peaks specific_union --model accessibility --adapter --da-fraction 0.5 --time 6:00:00
+
+time python launch.py --da-peaks specific_union --model accessibility --adapter --da-fraction 0.8 --time 6:00:00

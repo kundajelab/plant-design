@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Launch SLURM benchmark jobs for ChromBPNet low-rank adapter sweeps.
+"""Development-only launcher for ChromBPNet low-rank adapter sweep benchmarks.
 
 The launcher checks for the expected benchmark artifacts and only submits jobs
 for missing outputs unless --rerun is used. Jobs are grouped by model/sweep ID
 so a large sweep creates one SLURM job per LoRA sweep plus up to three reference
 jobs, rather than one job per output file.
+
+Use launch.py for the active benchmark path.
 
 Plot finished outputs with:
     python src/chrombpnet/benchmark/plot_lora_sweep.py --sweep-id <sweep_id>
@@ -30,16 +32,14 @@ REFERENCE_MODELS = {
     },
     "finetuned": {
         "label": "Finetuned 50:50",
-        "cross_dir": REPO_ROOT / "performance_metrics" / "finetuned",
-        "cross_fallback_dir": REPO_ROOT / "performance_metrics" / "chrombpnet_finetuned",
+        "cross_dir": REPO_ROOT / "performance_metrics" / "chrombpnet_finetuned",
         "da_path": REPO_ROOT / "performance_metrics" / "differential_accessibility" / "da_benchmark_finetuned.json",
         "pairwise_path": REPO_ROOT / "performance_metrics" / "pairwise_correlations_predicted_finetuned.json",
         "flags": ["--finetuned"],
     },
     "finetuned_0.8": {
         "label": "Finetuned 80:20",
-        "cross_dir": REPO_ROOT / "performance_metrics" / "finetuned_0.8",
-        "cross_fallback_dir": REPO_ROOT / "performance_metrics" / "chrombpnet_finetuned_0.8",
+        "cross_dir": REPO_ROOT / "performance_metrics" / "chrombpnet_finetuned_0.8",
         "da_path": REPO_ROOT / "performance_metrics" / "differential_accessibility" / "da_benchmark_finetuned_0.8.json",
         "pairwise_path": REPO_ROOT / "performance_metrics" / "pairwise_correlations_predicted_finetuned_0.8.json",
         "flags": ["--finetuned", "--da-fraction", "0.8"],
@@ -73,12 +73,7 @@ def slurm_job_name(prefix, name, max_len=120):
 
 def existing_cross_path(spec, pseudobulk):
     out_path = spec["cross_dir"] / f"{pseudobulk}.json"
-    fallback = spec.get("cross_fallback_dir", spec["cross_dir"]) / f"{pseudobulk}.json"
-    if out_path.exists():
-        return out_path
-    if fallback.exists():
-        return fallback
-    return None
+    return out_path if out_path.exists() else None
 
 
 def benchmark_da_peaks_path(da_path):
