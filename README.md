@@ -91,12 +91,15 @@ Evaluates models on held-out test chromosomes per fold:
 
 ```bash
 python src/chrombpnet/benchmark/benchmark.py -p <pseudobulk> [-o]
+python src/chrombpnet/benchmark/benchmark.py -p <pseudobulk> --adapter --da-fraction 0.8
 ```
 
 Options:
 - `-p` / `--pseudobulk`: one of `bundle_sheath`, `epidermis`, `guard`, `mesophyll`, `phloem`, `xylem`
 - `-o` / `--save-output`: save scaled predictions and signals to `predictions/chrombpnet/<pseudobulk>.npz`
 - `-b` / `--batch-size`: inference batch size (default: 64)
+- `--adapter`: benchmark the default daicon adapter run for the selected `--da-fraction`
+- `--adapter-sweep-id` / `--adapter-run-id`: benchmark an explicit adapter run ID
 
 Metrics (profile Pearson, Jensen-Shannon distance, log-counts Pearson, counts Spearman) are saved to `performance_metrics/chrombpnet/<pseudobulk>.json`.
 
@@ -117,6 +120,7 @@ specificity:
 
 ```bash
 python src/chrombpnet/benchmark/benchmark_da.py [--save-output]
+python src/chrombpnet/benchmark/benchmark_da.py --adapter --da-fraction 0.8
 ```
 
 ### 8. Full-model DA fine-tuning

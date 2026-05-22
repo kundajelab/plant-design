@@ -30,8 +30,12 @@ from tangermeme.predict import predict
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
+DAICON_SRC = Path("/Users/adamhe/github/daicon/src")
+if DAICON_SRC.exists() and str(DAICON_SRC) not in sys.path:
+    sys.path.insert(0, str(DAICON_SRC))
 
 from daicon import load_model_with_adapter  # noqa: E402
+from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
 
 # Import DA metric functions from the preprocessing script
 sys.path.insert(
@@ -191,39 +195,16 @@ def main():
     )
     parser.add_argument("-b", "--batch-size", type=int, default=64)
     parser.add_argument("-v", "--verbose", action="store_true")
-    parser.add_argument(
-        "--finetuned",
-        action="store_true",
-        help="Use finetuned models instead of base torch/ models",
-    )
-    parser.add_argument(
-        "--da-fraction",
-        type=float,
-        default=0.5,
-        help="DA fraction used during finetuning; selects model/output subdirectory (default: 0.5)",
-    )
-    parser.add_argument(
-        "--adapter-sweep-id",
-        type=str,
-        default=None,
-        help="Use adapter bundles from models/{pseudobulk}/adapters/{adapter_sweep_id}/",
+    add_model_variant_args(
+        parser,
+        finetuned_help="Use finetuned models instead of base torch/ models",
+        adapter_help="Use default daicon adapter bundles for the selected DA fraction",
     )
     args = parser.parse_args()
 
-    if args.finetuned and args.adapter_sweep_id is not None:
-        print(
-            "Error: use either --finetuned or --adapter-sweep-id, not both.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    fine_tag = (
-        "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
-    )
-    model_subdir = fine_tag if args.finetuned else "torch"
-    result_tag = (
-        args.adapter_sweep_id if args.adapter_sweep_id is not None else fine_tag
-    )
+    variant = resolve_model_variant(args)
+    model_subdir = variant["model_subdir"]
+    adapter_id = variant["adapter_id"]
 
     # Load observed DA values
     if not DA_PATH.exists():
@@ -254,13 +235,13 @@ def main():
                 / "models"
                 / ps
                 / "adapters"
-                / args.adapter_sweep_id
+                / adapter_id
                 / f"{ps}_f{fold}.adapter.pt"
                 for fold in range(n_folds)
             ]
             for ps in PSEUDOBULKS
         }
-        if args.adapter_sweep_id is not None
+        if adapter_id is not None
         else {ps: [None] * n_folds for ps in PSEUDOBULKS}
     )
     for ps, paths in model_paths.items():
@@ -619,11 +600,7 @@ def main():
     out_dir = REPO_ROOT / "performance_metrics" / "differential_accessibility"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    suffix = (
-        f"_adapter_{args.adapter_sweep_id}"
-        if args.adapter_sweep_id is not None
-        else (f"_{result_tag}" if args.finetuned else "")
-    )
+    suffix = variant["suffix"]
 
     results = {
         "n_peaks": n_peaks,
