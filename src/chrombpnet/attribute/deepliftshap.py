@@ -48,7 +48,9 @@ def assert_deeplift_shap_compatible(module):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
     parser.add_argument(
         "-p",
         "--pseudobulk",

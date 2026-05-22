@@ -767,7 +767,7 @@ def plot_pairwise_heatmaps(out_dir, verbose=False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         "--pseudobulks",

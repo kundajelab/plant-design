@@ -103,7 +103,9 @@ def write_pairwise_higher_beds(da_path, out_dir, threshold):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
     parser.add_argument(
         "--da-peaks-csv",
         type=Path,

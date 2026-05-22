@@ -84,7 +84,7 @@ def _scatter(ax, x, y, color):
 
 def main():
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         "--finetuned",

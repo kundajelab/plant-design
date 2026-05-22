@@ -475,7 +475,7 @@ def _adapter_manifest(args, base_model_path, adapter_config, trainable_params):
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         "-p",

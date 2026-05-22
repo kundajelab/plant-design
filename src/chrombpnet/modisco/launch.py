@@ -52,7 +52,9 @@ def first_array_rows(npz_path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",

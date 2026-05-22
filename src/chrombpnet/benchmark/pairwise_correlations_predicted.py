@@ -68,7 +68,7 @@ def build_merged_union_peaks():
 
 def main():
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     add_model_variant_args(
         parser,

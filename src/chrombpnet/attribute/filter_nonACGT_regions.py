@@ -67,7 +67,9 @@ def filter_nonACGT_regions(bed_fp, fa_fp, in_window=2114, verbose=False):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
     parser.add_argument("-b", "--bed_fp", type=str, required=True)
     parser.add_argument("-f", "--fa_fp", type=str, required=True)
     parser.add_argument("-o", "--out_fp", type=str, required=True)

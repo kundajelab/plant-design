@@ -32,7 +32,7 @@ FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
 
 def main():
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         "-p",

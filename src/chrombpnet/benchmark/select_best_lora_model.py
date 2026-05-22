@@ -101,7 +101,9 @@ def score_candidates(table, weights):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
     parser.add_argument("--summary", type=Path, default=DEFAULT_SUMMARY)
     parser.add_argument(
         "--include-references",

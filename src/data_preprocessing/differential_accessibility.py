@@ -215,7 +215,7 @@ def compute_tau(cpm):
 
 def main():
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         "--tmm",

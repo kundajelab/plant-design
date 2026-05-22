@@ -12,7 +12,7 @@ from finetune_da import PSEUDOBULKS, main as finetune_da_main
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         "-p",

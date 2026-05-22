@@ -49,7 +49,9 @@ def _load_sweep(path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
     parser.add_argument("--config", type=Path, default=None)
     parser.add_argument("--sweep-prefix", default="adapter")
     parser.add_argument("--pseudobulk", action="append", default=None)

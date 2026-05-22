@@ -302,7 +302,7 @@ def submit_jobs(args, jobs):
 
 def main():
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument("--sweep-id", action="append", default=None)
     parser.add_argument(

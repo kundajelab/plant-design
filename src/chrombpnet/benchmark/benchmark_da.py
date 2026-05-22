@@ -165,7 +165,7 @@ def ranking_metrics(y_true, y_score, ks=(100, 500, 1000)):
 
 def main():
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         "--pseudocount",
