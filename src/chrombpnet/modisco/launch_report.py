@@ -14,6 +14,8 @@ Usage:
     python src/chrombpnet/modisco/launch_report.py --model-type bias                  # bias model only
     python src/chrombpnet/modisco/launch_report.py --finetuned                        # reports for finetuned model attributions (50:50)
     python src/chrombpnet/modisco/launch_report.py --finetuned --da-fraction 0.8     # reports for finetuned model attributions (80:20)
+    python src/chrombpnet/modisco/launch_report.py --adapter                         # reports for default daicon adapter attributions (50:50)
+    python src/chrombpnet/modisco/launch_report.py --adapter --da-fraction 0.8       # reports for default daicon adapter attributions (80:20)
     python src/chrombpnet/modisco/launch_report.py --da-peaks tau                    # reports for tau DA-peaks attributions
     python src/chrombpnet/modisco/launch_report.py --da-peaks specific_union       # reports for per-cell-type union DA-peaks attributions
     python src/chrombpnet/modisco/launch_report.py --time 2:00:00 --mem 32G
@@ -26,7 +28,9 @@ import textwrap
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "attribute"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "benchmark"))
 from da_peaks import DA_PEAK_CHOICES, da_suffix
+from model_variants import add_model_variant_args, resolve_model_variant
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 PSEUDOBULKS_PATH = REPO_ROOT / "configs" / "pseudobulks.txt"
@@ -61,16 +65,10 @@ def main():
         metavar="MODEL_TYPE",
         help="model type(s) to run; repeatable (default: bias accessibility)",
     )
-    parser.add_argument(
-        "--finetuned",
-        action="store_true",
-        help="Use modisco outputs from finetuned model attributions instead of base models",
-    )
-    parser.add_argument(
-        "--da-fraction",
-        type=float,
-        default=0.5,
-        help="DA fraction used during finetuning; selects modisco subdirectory (default: 0.5)",
+    add_model_variant_args(
+        parser,
+        finetuned_help="Use modisco outputs from finetuned model attributions instead of base models",
+        adapter_help="Use modisco outputs from default daicon adapter attributions for the selected DA fraction",
     )
     parser.add_argument(
         "--da-peaks",
@@ -85,19 +83,24 @@ def main():
     parser.add_argument("--mem", type=str, default="32G")
     parser.add_argument("--time", type=str, default="4:00:00")
     args = parser.parse_args()
+    variant = resolve_model_variant(args)
+    fine_tag = variant["fine_tag"]
+    adapter_id = variant["adapter_id"]
 
     heads = args.head if args.head is not None else ["profile", "count"]
     model_types = (
         args.model_type if args.model_type is not None else ["bias", "accessibility"]
     )
 
-    fine_tag = "finetuned" if args.da_fraction == 0.5 else f"finetuned_{args.da_fraction:g}"
-    modisco_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
+    if adapter_id is not None:
+        modisco_subdir = f"chrombpnet_adapter_{adapter_id}"
+    else:
+        modisco_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
     suffix = da_suffix(args.da_peaks)
 
-    if args.finetuned and "bias" in model_types:
+    if (args.finetuned or adapter_id is not None) and "bias" in model_types:
         print(
-            "Warning: bias model is not saved during finetuning; skipping bias model type.",
+            "Warning: bias model is not available for finetuned/adapter runs; skipping bias model type.",
             file=sys.stderr,
         )
         model_types = [m for m in model_types if m != "bias"]
@@ -129,7 +132,10 @@ def main():
                     skipped_done += 1
                     continue
 
-                tag = f"_{fine_tag}" if args.finetuned else ""
+                if adapter_id is not None:
+                    tag = f"_adapter_{adapter_id}"
+                else:
+                    tag = f"_{fine_tag}" if args.finetuned else ""
                 job_name = f"modisco_report{tag}{suffix}_{pseudobulk}_{model_type}_{head}"
 
                 modisco_report_cmd = (

@@ -288,3 +288,34 @@ python src/chrombpnet/attribute/deepliftshap.py \
 mode because the adapter branches are affine residual additions over frozen
 `Conv1d`/`Linear` layers. Dropout may be used during training but is disabled
 with `model.eval()` during attribution.
+
+Run tf-modisco on attribution outputs and generate reports:
+
+```bash
+python src/chrombpnet/modisco/launch.py --model accessibility
+python src/chrombpnet/modisco/launch_report.py --model accessibility
+```
+
+Default daicon adapter tf-modisco runs use the same adapter selectors:
+
+```bash
+python src/chrombpnet/modisco/launch.py \
+    --model accessibility \
+    --adapter \
+    --da-fraction 0.5
+
+python src/chrombpnet/modisco/launch.py \
+    --model accessibility \
+    --adapter \
+    --da-fraction 0.8
+
+python src/chrombpnet/modisco/launch_report.py \
+    --model accessibility \
+    --adapter \
+    --da-fraction 0.5
+
+python src/chrombpnet/modisco/launch_report.py \
+    --model accessibility \
+    --adapter \
+    --da-fraction 0.8
+```
