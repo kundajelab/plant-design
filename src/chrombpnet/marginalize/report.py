@@ -64,7 +64,7 @@ def main(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("model_fname", type=str)
     parser.add_argument("sequence_fname", type=str)
     parser.add_argument("loci_fname", type=str)

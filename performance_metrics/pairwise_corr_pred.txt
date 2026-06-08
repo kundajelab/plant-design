@@ -1,0 +1,34 @@
+Pairwise Pearson correlations (predicted counts over union peaks):
+               bundle_sheath  epidermis  guard  mesophyll  phloem  xylem
+bundle_sheath         1.0000     0.8074 0.7590     0.7962  0.6693 0.7845
+epidermis             0.8074     1.0000 0.7214     0.8574  0.8495 0.7355
+guard                 0.7590     0.7214 1.0000     0.8303  0.5473 0.8331
+mesophyll             0.7962     0.8574 0.8303     1.0000  0.8021 0.8028
+phloem                0.6693     0.8495 0.5473     0.8021  1.0000 0.5883
+xylem                 0.7845     0.7355 0.8331     0.8028  0.5883 1.0000
+Pairwise Spearman correlations (predicted counts over union peaks):
+               bundle_sheath  epidermis  guard  mesophyll  phloem  xylem
+bundle_sheath         1.0000     0.7935 0.7454     0.8013  0.7231 0.7279
+epidermis             0.7935     1.0000 0.6574     0.8227  0.8772 0.6802
+guard                 0.7454     0.6574 1.0000     0.8255  0.5564 0.7823
+mesophyll             0.8013     0.8227 0.8255     1.0000  0.7948 0.7653
+phloem                0.7231     0.8772 0.5564     0.7948  1.0000 0.6136
+xylem                 0.7279     0.6802 0.7823     0.7653  0.6136 1.0000
+
+Fine-tuned
+Pairwise Pearson correlations (predicted counts over union peaks):
+               bundle_sheath  epidermis  guard  mesophyll  phloem  xylem
+bundle_sheath         1.0000     0.8436 0.7860     0.8961  0.8826 0.8698
+epidermis             0.8436     1.0000 0.8118     0.8928  0.8035 0.8816
+guard                 0.7860     0.8118 1.0000     0.8174  0.7457 0.8170
+mesophyll             0.8961     0.8928 0.8174     1.0000  0.8546 0.8887
+phloem                0.8826     0.8035 0.7457     0.8546  1.0000 0.8544
+xylem                 0.8698     0.8816 0.8170     0.8887  0.8544 1.0000
+Pairwise Spearman correlations (predicted counts over union peaks):
+               bundle_sheath  epidermis  guard  mesophyll  phloem  xylem
+bundle_sheath         1.0000     0.8296 0.7858     0.8943  0.8781 0.8660
+epidermis             0.8296     1.0000 0.8177     0.8821  0.8027 0.8835
+guard                 0.7858     0.8177 1.0000     0.8235  0.7519 0.8203
+mesophyll             0.8943     0.8821 0.8235     1.0000  0.8559 0.8912
+phloem                0.8781     0.8027 0.7519     0.8559  1.0000 0.8621
+xylem                 0.8660     0.8835 0.8203     0.8912  0.8621 1.0000

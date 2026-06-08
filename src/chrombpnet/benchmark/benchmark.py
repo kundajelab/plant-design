@@ -6,6 +6,7 @@ and reports profile and count prediction metrics.
 
 Usage:
     python src/chrombpnet/benchmark/benchmark.py -p mesophyll
+    python src/chrombpnet/benchmark/benchmark.py -p mesophyll --finetuned
 """
 
 import argparse
@@ -20,13 +21,18 @@ from tangermeme.io import extract_loci
 from tangermeme.predict import predict
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from daicon import load_model_with_adapter  # noqa: E402
+from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
+
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         "-p",
@@ -44,7 +50,18 @@ def main():
     )
     parser.add_argument("-b", "--batch-size", type=int, default=64)
     parser.add_argument("-v", "--verbose", action="store_true")
+    add_model_variant_args(
+        parser,
+        finetuned_help="Use finetuned models instead of base torch/ models",
+        adapter_help="Use default daicon adapter bundle for the selected DA fraction",
+    )
     args = parser.parse_args()
+
+    variant = resolve_model_variant(args)
+    model_subdir = variant["model_subdir"]
+    adapter_id = variant["adapter_id"]
+    metrics_subdir = variant["metrics_subdir"]
+    predictions_subdir = variant["predictions_subdir"]
 
     # Load chrom splits
     with open(CHROM_SPLITS_PATH, "r") as f:
@@ -64,13 +81,30 @@ def main():
         REPO_ROOT
         / "models"
         / args.pseudobulk
-        / "torch"
+        / model_subdir
         / f"{args.pseudobulk}_f{fold}.torch"
         for fold in range(n_folds)
     ]
+    adapter_paths = (
+        [
+            REPO_ROOT
+            / "models"
+            / args.pseudobulk
+            / "adapters"
+            / adapter_id
+            / f"{args.pseudobulk}_f{fold}.adapter.pt"
+            for fold in range(n_folds)
+        ]
+        if adapter_id is not None
+        else [None] * n_folds
+    )
     for model_path in model_paths:
         if not model_path.exists():
             print(f"Error: model not found: {model_path}", file=sys.stderr)
+            sys.exit(1)
+    for adapter_path in adapter_paths:
+        if adapter_path is not None and not adapter_path.exists():
+            print(f"Error: adapter bundle not found: {adapter_path}", file=sys.stderr)
             sys.exit(1)
 
     params = {
@@ -104,8 +138,11 @@ def main():
         )
         signals.append(torch.abs(y))
 
-        model = torch.load(
-            model_paths[fold], weights_only=False, map_location=torch.device("cpu")
+        model, _manifest = load_model_with_adapter(
+            model_paths[fold],
+            adapter_paths[fold],
+            map_location=torch.device("cpu"),
+            adapter_root="accessibility",
         )
         preds.append(
             predict(
@@ -190,7 +227,7 @@ def main():
             "counts_spearman": counts_spearman_all,
         },
     }
-    metrics_dir = REPO_ROOT / "performance_metrics" / "chrombpnet"
+    metrics_dir = REPO_ROOT / "performance_metrics" / metrics_subdir
     metrics_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = metrics_dir / f"{args.pseudobulk}.json"
     with open(metrics_path, "w") as f:
@@ -198,7 +235,7 @@ def main():
     print(f"\nMetrics saved to {metrics_path}")
 
     if args.save_output:
-        output_dir = REPO_ROOT / "predictions" / "chrombpnet"
+        output_dir = REPO_ROOT / "predictions" / predictions_subdir
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / f"{args.pseudobulk}.npz"
         scaled_preds = {

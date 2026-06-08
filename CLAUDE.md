@@ -57,6 +57,17 @@ python src/chrombpnet/fit/convert_to_torch.py
 
 # 7. Benchmark models
 python src/chrombpnet/benchmark/benchmark.py -p <pseudobulk> [-o]
+
+# 8. Compute differential accessibility
+python src/data_preprocessing/differential_accessibility.py
+
+# 9. Benchmark DA predictions
+python src/chrombpnet/benchmark/benchmark_da.py
+
+# 10. Finetune on DA peaks (one process per fold, e.g. one per GPU)
+for fold in 0 1 2 3 4; do
+    python src/chrombpnet/da_finetuning/finetune_da.py -p <pseudobulk> -f $fold
+done
 ```
 
 ## Code Architecture
@@ -73,6 +84,7 @@ The main training module, adapted from [kundajelab/chrombpnet](https://github.co
 ### `src/chrombpnet/benchmark/`
 
 - **`benchmark.py`**: Loads converted PyTorch models, runs genome-wide predictions, and computes profile Pearson/JSD and counts Pearson/Spearman per fold and aggregated. Outputs to `performance_metrics/chrombpnet/<pseudobulk>.json`. Use `-o`/`--save-output` to save raw predictions to `predictions/chrombpnet/<pseudobulk>.npz`.
+- **`benchmark_da.py`**: Evaluates how well predicted counts reproduce cell-type specificity. Builds an out-of-fold predicted count matrix over the union peak set, converts to CPM, and computes log2FC / tau / pairwise log2FC correlations and specificity accuracy against observed values from `da_peaks.csv`. Outputs to `performance_metrics/differential_accessibility/da_benchmark.json`. Requires `differential_accessibility.py` to have been run first. Use `--save-output` for a per-peak CSV.
 
 ### `configs/`
 
@@ -90,9 +102,14 @@ DeepLIFT/SHAP attribution pipeline:
 - **`launch.sh`**: SLURM array job (`--array=0-7`) that runs `deepliftshap.py` for 4 pseudobulks × 2 heads in parallel, one GPU per task. Requires `$REPO_ROOT` to be exported before calling `sbatch`.
 - **`cmd.sh`**: Local multi-GPU alternative using `simple_gpu_scheduler`. Also contains the `parallel`-based commands for running `filter_nonACGT_regions.py` and `save_ohe.py`.
 
+### `src/chrombpnet/da_finetuning/`
+
+- **`finetune_da.py`**: Finetunes the accessibility submodel (bias frozen) for one pseudobulk × fold on a mixed training set: 50% DA peaks (union of `da_peaks_tau.bed` + `da_peaks_pairwise.bed`) and 50% base mix (cell-type peaks at 7/8, nonpeaks at 1/8). Each DA peak is seen exactly once per epoch. Requires `-p`/`--pseudobulk` and `-f`/`--fold`. Saves finetuned models to `models/{pseudobulk}/finetuned/`.
+
 ### `src/data_preprocessing/`
 
 - **`make_bigwigs.sh`**: Converts per-pseudobulk fragment BAM files → strand-shifted bigwigs using `bam2bw`. References Stanford Oak cluster paths.
+- **`differential_accessibility.py`**: Builds a union peak set from all pseudobulk narrowPeak files, extracts read counts from bigwigs, normalizes (CPM or TMM with `--tmm`), and computes per-peak specificity scores (log2FC, pairwise log2FC, tau). Outputs `da_peaks.csv`, `da_peaks_tau.bed`, `da_peaks_pairwise.bed`, per-cell-type ranked CSVs, and `summary.json` to `data/peaks/differential_accessibility/`. Must be run before `benchmark_da.py` or `finetune_da.py`.
 
 ## Data Conventions
 

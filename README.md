@@ -30,10 +30,14 @@ Also note that TF installation is a bit of a pain. These things have worked for 
 All upstream and downstream processing from model training requires a separate PyTorch environment, as TensorFlow 2.8 and modern PyTorch are not compatible in the same environment:
 
 ```bash
-mamba create -n torch python=3.13
+mamba create -n torch python=3.14
 mamba activate torch
-pip install bpnetlite tangermeme tqdm bam2bw ledidi
+pip install bpnet-lite tangermeme tqdm bam2bw ledidi daicon
 ```
+
+`daicon` provides the low-rank convolutional/linear adapter implementation used
+for differential accessibility fine-tuning. Source:
+<https://github.com/adamyhe/daicon>.
 
 ## Pipeline
 
@@ -87,16 +91,148 @@ Evaluates models on held-out test chromosomes per fold:
 
 ```bash
 python src/chrombpnet/benchmark/benchmark.py -p <pseudobulk> [-o]
+python src/chrombpnet/benchmark/benchmark.py -p <pseudobulk> --adapter --da-fraction 0.8
 ```
 
 Options:
 - `-p` / `--pseudobulk`: one of `bundle_sheath`, `epidermis`, `guard`, `mesophyll`, `phloem`, `xylem`
 - `-o` / `--save-output`: save scaled predictions and signals to `predictions/chrombpnet/<pseudobulk>.npz`
 - `-b` / `--batch-size`: inference batch size (default: 64)
+- `--adapter`: benchmark the default daicon adapter run for the selected `--da-fraction`
+- `--adapter-sweep-id` / `--adapter-run-id`: benchmark an explicit adapter run ID
 
 Metrics (profile Pearson, Jensen-Shannon distance, log-counts Pearson, counts Spearman) are saved to `performance_metrics/chrombpnet/<pseudobulk>.json`.
 
-### 7. Attribution
+### 7. Differential accessibility
+
+Build the union peak set, extract observed accessibility counts, and compute DA
+specificity metrics:
+
+```bash
+python src/data_preprocessing/differential_accessibility.py
+```
+
+Outputs are written under `data/peaks/differential_accessibility/` and are
+required for DA benchmarking and adapter fine-tuning.
+
+Evaluate whether out-of-fold model predictions recover observed cell-type
+specificity:
+
+```bash
+python src/chrombpnet/benchmark/benchmark_da.py [--save-output]
+python src/chrombpnet/benchmark/benchmark_da.py --adapter --da-fraction 0.8
+```
+
+### 8. Full-model DA fine-tuning
+
+The original DA fine-tuning path updates the full accessibility submodel while
+keeping the bias model frozen:
+
+```bash
+python src/chrombpnet/da_finetuning/finetune_da.py -p <pseudobulk> -f <fold> -v
+```
+
+Fine-tuned models are saved under `models/<pseudobulk>/finetuned/`.
+Use `--da-fraction 0.8` to save the 80:20 DA replay run under
+`models/<pseudobulk>/finetuned_0.8/`.
+
+### 9. Low-rank adapter DA fine-tuning
+
+Adapter fine-tuning freezes the base ChromBPNet model and trains only small
+low-rank residual adapters from `daicon`. Adapter bundles are saved separately
+and are loaded onto the matching base fold model at prediction/attribution time.
+The frozen bias and accessibility base weights are not included in the adapter
+state dict; only adapter branch weights are saved.
+
+The main DA fine-tuning entrypoint supports daicon adapter mode. By default it
+uses the daicon BPNet defaults selected from the parameter sweep: all BPNet
+layers, `conv_rank=16`, `linear_rank=4`, dropout `0`, and alpha-8 scaling.
+
+```bash
+python src/chrombpnet/da_finetuning/finetune_da.py \
+    -p <pseudobulk> -f <fold> --mode adapter --da-fraction 0.5 -v
+
+python src/chrombpnet/da_finetuning/finetune_da.py \
+    -p <pseudobulk> -f <fold> --mode adapter --da-fraction 0.8 -v
+```
+
+Artifacts:
+
+```text
+models/<pseudobulk>/adapters/daicon_default_da0p5/<pseudobulk>_f<fold>.adapter.pt
+models/<pseudobulk>/adapters/daicon_default_da0p5/<pseudobulk>_f<fold>.config.json
+models/<pseudobulk>/adapters/daicon_default_da0p5/<pseudobulk>_f<fold>.log.tsv
+models/<pseudobulk>/adapters/daicon_default_da0p8/<pseudobulk>_f<fold>.adapter.pt
+```
+
+The `.adapter.pt` bundle contains a manifest plus adapter-only `state_dict`.
+The manifest records the pseudobulk, fold, base model path, adapter config,
+layer specs, trainable parameter count, and training hyperparameters. Use the
+final `.log.tsv` as the completion marker because the best adapter checkpoint is
+written during training before the loop finishes.
+
+The legacy `finetune_adapters.py` CLI remains available as a compatibility
+wrapper around `finetune_da.py --mode adapter`.
+
+Use the standard launcher to submit full-model DA fine-tuning plus daicon
+adapter runs. It submits one SLURM job per run group, pseudobulk, and fold,
+with both 0.5 and 0.8 DA fractions by default. Adapter fine-tuning uses
+`--adapter-lr 0.001` by default:
+
+```bash
+python src/chrombpnet/da_finetuning/launch.py --dry-run
+
+python src/chrombpnet/da_finetuning/launch.py \
+    --run full \
+    --run adapter
+```
+
+Use the sweep launcher for the broad adapter hyperparameter grid. It submits one
+SLURM job per pseudobulk/fold and uses the final `.log.tsv` as the completion
+marker:
+
+```bash
+python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
+    --config configs/adapter_sweeps/smoke.json \
+    --dry-run
+
+python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
+    --config configs/adapter_sweeps/smoke.json
+```
+
+Check finished adapter jobs:
+
+```bash
+python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
+    --config configs/adapter_sweeps/smoke.json \
+    --check-finished
+```
+
+Benchmark the active model set (base, both full-finetuned models, and both
+default daicon adapter models):
+
+```bash
+python src/chrombpnet/benchmark/launch.py --dry-run
+python src/chrombpnet/benchmark/launch.py
+```
+
+Summarize and plot the active model benchmark outputs:
+
+```bash
+python src/chrombpnet/benchmark/plot_benchmark.py
+```
+
+The LoRA sweep benchmark and selection scripts are development-only utilities
+for choosing adapter hyperparameters:
+
+```bash
+python src/chrombpnet/benchmark/benchmark_lora_sweep.py --sweep-id <sweep_id>
+python src/chrombpnet/benchmark/plot_lora_sweep.py --sweep-id <sweep_id>
+python src/chrombpnet/benchmark/select_best_lora_model.py \
+    --summary performance_metrics/plots/lora_sweep/lora_sweep_summary.csv
+```
+
+### 10. Attribution
 
 First, filter peaks to remove any containing non-ACGT characters, then save one-hot-encoded sequences (run from `src/chrombpnet/attribute/`):
 
@@ -116,8 +252,70 @@ done
 Then compute DeepLIFT/SHAP hypothetical attributions on a SLURM cluster:
 
 ```bash
-export REPO_ROOT=/path/to/plant-design
-sbatch src/chrombpnet/attribute/launch.sh
+python src/chrombpnet/attribute/launch.py --model accessibility
 ```
 
-`launch.sh` submits an 8-task array (4 pseudobulks × 2 heads: profile, count) for the accessibility model. Attributions are saved to `attributions/{pseudobulk}_{model_type}_{head}.npz`, and one-hot-encoded sequences to `attributions/{pseudobulk}_ohe.npz`.
+`launch.py` submits one SLURM job per pseudobulk, model type, and head.
+Attributions are saved under `attributions/chrombpnet/`, and one-hot-encoded
+sequences to `attributions/chrombpnet/`.
+
+Default daicon adapter attribution is supported through the attribution launcher:
+
+```bash
+python src/chrombpnet/attribute/launch.py \
+    --model accessibility \
+    --adapter \
+    --da-fraction 0.5
+
+python src/chrombpnet/attribute/launch.py \
+    --model accessibility \
+    --adapter \
+    --da-fraction 0.8
+```
+
+Custom adapter sweep/run attribution is supported by passing the trained adapter
+run ID through the attribution launcher or DeepLIFT script:
+
+```bash
+python src/chrombpnet/attribute/deepliftshap.py \
+    -p <pseudobulk> \
+    -m accessibility \
+    --head profile \
+    --adapter-run-id <adapter_id>
+```
+
+`daicon` adapters are compatible with tangermeme DeepLIFT/SHAP in evaluation
+mode because the adapter branches are affine residual additions over frozen
+`Conv1d`/`Linear` layers. Dropout may be used during training but is disabled
+with `model.eval()` during attribution.
+
+Run tf-modisco on attribution outputs and generate reports:
+
+```bash
+python src/chrombpnet/modisco/launch.py --model accessibility
+python src/chrombpnet/modisco/launch_report.py --model accessibility
+```
+
+Default daicon adapter tf-modisco runs use the same adapter selectors:
+
+```bash
+python src/chrombpnet/modisco/launch.py \
+    --model accessibility \
+    --adapter \
+    --da-fraction 0.5
+
+python src/chrombpnet/modisco/launch.py \
+    --model accessibility \
+    --adapter \
+    --da-fraction 0.8
+
+python src/chrombpnet/modisco/launch_report.py \
+    --model accessibility \
+    --adapter \
+    --da-fraction 0.5
+
+python src/chrombpnet/modisco/launch_report.py \
+    --model accessibility \
+    --adapter \
+    --da-fraction 0.8
+```

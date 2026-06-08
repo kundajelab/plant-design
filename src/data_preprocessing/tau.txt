@@ -1,0 +1,7 @@
+Specific peaks per cell type (tau > 0.75):
+  bundle_sheath: 118
+  epidermis: 94
+  guard: 397
+  mesophyll: 50
+  phloem: 415
+  xylem: 56

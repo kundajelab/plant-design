@@ -19,14 +19,38 @@ import torch
 from bpnetlite.attribute import deep_lift_shap
 from bpnetlite.bpnet import CountWrapper, ProfileWrapper
 from tangermeme.io import extract_loci
+from da_peaks import DA_PEAK_CHOICES, da_suffix, resolve_loci_path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+sys.path.insert(0, str(REPO_ROOT / "src" / "chrombpnet" / "benchmark"))
+
+from daicon import (  # noqa: E402
+    iter_adapters,
+    load_accessibility_with_adapter,
+)
+from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
+
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
 
 
+def assert_deeplift_shap_compatible(module):
+    """Validate that daicon adapters are affine during DeepLIFT/SHAP."""
+    for name, adapter in iter_adapters(module):
+        dropout = getattr(adapter, "dropout", None)
+        if isinstance(dropout, torch.nn.Dropout) and dropout.training:
+            raise RuntimeError(
+                f"Adapter '{name}' has active dropout. Call model.eval() before "
+                "running DeepLIFT/SHAP."
+            )
+    return True
+
+
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
     parser.add_argument(
         "-p",
         "--pseudobulk",
@@ -50,9 +74,45 @@ def main():
         choices=["profile", "count"],
         help="type of prediction to make (profile or count)",
     )
+    parser.add_argument(
+        "--da-peaks",
+        type=str,
+        choices=DA_PEAK_CHOICES,
+        default=None,
+        help="Run attributions on DA peaks instead of all cell-type peaks. "
+             "'tau' uses da_peaks_tau.bed; 'pairwise' uses da_peaks_pairwise.bed; "
+             "'pairwise_higher' uses per-cell-type directional pairwise BEDs; "
+             "'specific_union' uses per-cell-type tau-specific OR pairwise-higher BEDs. "
+             "Requires differential_accessibility.py and write_pairwise_higher_beds.py "
+             "to have been run first.",
+    )
     parser.add_argument("-b", "--batch-size", type=int, default=64)
     parser.add_argument("-v", "--verbose", action="store_true")
+    add_model_variant_args(
+        parser,
+        finetuned_help="Use finetuned accessibility models instead of base torch/ models",
+        adapter_help="Use default daicon adapter bundles for the selected DA fraction",
+    )
     args = parser.parse_args()
+    variant = resolve_model_variant(args)
+    fine_tag = variant["fine_tag"]
+    model_subdir = variant["model_subdir"]
+    adapter_id = variant["adapter_id"]
+
+    if args.finetuned and args.model_type == "bias":
+        print(
+            "Error: bias model is not saved during finetuning (bias is frozen). "
+            "Use --model-type accessibility with --finetuned.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if adapter_id is not None and args.model_type == "bias":
+        print(
+            "Error: adapters are only defined for the accessibility model. "
+            "Use --model-type accessibility with --adapter or --adapter-run-id.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     # Load chrom splits
     with open(CHROM_SPLITS_PATH, "r") as f:
@@ -60,14 +120,23 @@ def main():
     n_folds = len(chrom_splits)
 
     # Construct data paths and verify that they exist.
-    peaks_path = str(REPO_ROOT / f"data/peaks/{args.pseudobulk}_peaks_ACGT.narrowPeak")
-    for path, label in [(peaks_path, "peaks")]:
-        if not Path(path).exists():
-            print(f"Error: {label} not found: {path}", file=sys.stderr)
+    if args.da_peaks is not None:
+        peaks_path = resolve_loci_path(REPO_ROOT, args.pseudobulk, args.da_peaks)
+        if not peaks_path.exists():
+            print(
+                f"Error: {peaks_path.name} not found: {peaks_path}. "
+                "Run differential_accessibility.py and write_pairwise_higher_beds.py first.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    else:
+        peaks_path = resolve_loci_path(REPO_ROOT, args.pseudobulk, None)
+        if not Path(peaks_path).exists():
+            print(f"Error: peaks not found: {peaks_path}", file=sys.stderr)
             sys.exit(1)
 
     # Resolve model directory and verify that all models exist
-    model_dir = REPO_ROOT / "models" / args.pseudobulk / "torch"
+    model_dir = REPO_ROOT / "models" / args.pseudobulk / model_subdir
     model_paths = [
         model_dir / f"{args.pseudobulk}_f{fold}.{args.model_type}.torch"
         for fold in range(n_folds)
@@ -76,11 +145,24 @@ def main():
         if not model_path.exists():
             print(f"Error: model not found: {model_path}", file=sys.stderr)
             sys.exit(1)
+    adapter_paths = [
+        REPO_ROOT
+        / "models"
+        / args.pseudobulk
+        / "adapters"
+        / adapter_id
+        / f"{args.pseudobulk}_f{fold}.adapter.pt"
+        for fold in range(n_folds)
+    ] if adapter_id is not None else [None] * n_folds
+    for adapter_path in adapter_paths:
+        if adapter_path is not None and not adapter_path.exists():
+            print(f"Error: adapter bundle not found: {adapter_path}", file=sys.stderr)
+            sys.exit(1)
 
     # Build params with defaults, then apply CLI overrides
     params = {
         "sequences": FASTA,
-        "loci": peaks_path,
+        "loci": str(peaks_path),
         "in_window": 2114,
         "batch_size": 64,
         "verbose": False,
@@ -105,9 +187,18 @@ def main():
     attributions = []
     for fold in range(n_folds):
         # Load model
-        model = torch.load(
-            model_paths[fold], weights_only=False, map_location=torch.device("cpu")
-        )
+        if adapter_id is None:
+            model = torch.load(
+                model_paths[fold], weights_only=False, map_location=torch.device("cpu")
+            )
+        else:
+            model, _manifest = load_accessibility_with_adapter(
+                model_paths[fold],
+                adapter_paths[fold],
+                map_location=torch.device("cpu"),
+            )
+            model.eval()
+            assert_deeplift_shap_compatible(model)
         if args.head == "profile":
             model = ProfileWrapper(model)
         elif args.head == "count":
@@ -129,11 +220,18 @@ def main():
         torch.cuda.empty_cache()
 
     # Output directory
-    out_dir = REPO_ROOT / "attributions"
+    if adapter_id is not None:
+        out_subdir = f"chrombpnet_adapter_{adapter_id}"
+    else:
+        out_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
+    out_dir = REPO_ROOT / "attributions" / out_subdir
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Save attributions
-    out_path = out_dir / f"{args.pseudobulk}_{args.model_type}_{args.head}.npz"
+    out_path = (
+        out_dir
+        / f"{args.pseudobulk}_{args.model_type}_{args.head}{da_suffix(args.da_peaks)}.npz"
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(out_path, np.stack(attributions).mean(axis=0))
     print(f"\nAttributions saved to {out_path}")
