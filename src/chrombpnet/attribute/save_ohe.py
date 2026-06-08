@@ -12,8 +12,8 @@ from itertools import chain
 from pathlib import Path
 
 import numpy as np
-from tangermeme.io import extract_loci
 from da_peaks import DA_PEAK_CHOICES, da_suffix, resolve_loci_path, resolve_ohe_path
+from tangermeme.io import extract_loci
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
@@ -30,7 +30,7 @@ def main():
         type=str,
         required=True,
         choices=["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"],
-        help="The name of the pseudobulk to benchmark",
+        help="The name of the pseudobulk to save OHE for.",
     )
     parser.add_argument(
         "--da-peaks",
