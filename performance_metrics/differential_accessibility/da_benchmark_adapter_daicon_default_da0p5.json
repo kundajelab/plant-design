@@ -1,0 +1,779 @@
+{
+    "n_peaks": 107550,
+    "pseudocount": 1.0,
+    "tau_threshold": 0.75,
+    "log2fc_threshold": 1.5,
+    "log2fc_per_celltype": {
+        "bundle_sheath": {
+            "pearson": 0.21602584237877862,
+            "spearman": 0.2016550887795036,
+            "pearson_tau_filtered": 0.37268507398690526,
+            "spearman_tau_filtered": 0.37165597958222724
+        },
+        "epidermis": {
+            "pearson": 0.3217390141958194,
+            "spearman": 0.30967884908691184,
+            "pearson_tau_filtered": 0.39095954757249335,
+            "spearman_tau_filtered": 0.33542346891602093
+        },
+        "guard": {
+            "pearson": 0.30272811697499225,
+            "spearman": 0.28534888920175694,
+            "pearson_tau_filtered": 0.5173838118823129,
+            "spearman_tau_filtered": 0.49711656739304405
+        },
+        "mesophyll": {
+            "pearson": 0.1764790927013965,
+            "spearman": 0.17049010766415781,
+            "pearson_tau_filtered": 0.1995022514262662,
+            "spearman_tau_filtered": 0.22088244663143983
+        },
+        "phloem": {
+            "pearson": 0.2718289442316084,
+            "spearman": 0.24657213886701124,
+            "pearson_tau_filtered": 0.5553521710667702,
+            "spearman_tau_filtered": 0.5463808542192307
+        },
+        "xylem": {
+            "pearson": 0.07635772639739419,
+            "spearman": 0.07724830649869095,
+            "pearson_tau_filtered": 0.09861962970168818,
+            "spearman_tau_filtered": 0.08753852071113073
+        }
+    },
+    "pairwise_log2fc": {
+        "bundle_sheath_vs_epidermis": {
+            "pearson": 0.3164158589067405,
+            "spearman": 0.30058417246237923,
+            "pearson_pairwise_filtered": 0.511996498016503,
+            "spearman_pairwise_filtered": 0.5150297599536215
+        },
+        "bundle_sheath_vs_guard": {
+            "pearson": 0.28538059791865167,
+            "spearman": 0.27051205526512573,
+            "pearson_pairwise_filtered": 0.4910058299098284,
+            "spearman_pairwise_filtered": 0.4956733532684375
+        },
+        "bundle_sheath_vs_mesophyll": {
+            "pearson": 0.1987864927608034,
+            "spearman": 0.17908337507802552,
+            "pearson_pairwise_filtered": 0.35911226966128595,
+            "spearman_pairwise_filtered": 0.35461871597401856
+        },
+        "bundle_sheath_vs_phloem": {
+            "pearson": 0.15234554016255136,
+            "spearman": 0.14304511511439705,
+            "pearson_pairwise_filtered": 0.26008282803378957,
+            "spearman_pairwise_filtered": 0.2401438189802298
+        },
+        "bundle_sheath_vs_xylem": {
+            "pearson": 0.1452306517087532,
+            "spearman": 0.1394384733329307,
+            "pearson_pairwise_filtered": 0.2795352440333946,
+            "spearman_pairwise_filtered": 0.2795367677995818
+        },
+        "epidermis_vs_guard": {
+            "pearson": 0.31239505675231916,
+            "spearman": 0.29648303900873574,
+            "pearson_pairwise_filtered": 0.43955167950457685,
+            "spearman_pairwise_filtered": 0.4367568304755211
+        },
+        "epidermis_vs_mesophyll": {
+            "pearson": 0.22536752048971698,
+            "spearman": 0.2187630542753469,
+            "pearson_pairwise_filtered": 0.35910123091277807,
+            "spearman_pairwise_filtered": 0.36358112327665754
+        },
+        "epidermis_vs_phloem": {
+            "pearson": 0.32440534283110706,
+            "spearman": 0.3006794936204404,
+            "pearson_pairwise_filtered": 0.5484764368019559,
+            "spearman_pairwise_filtered": 0.5524272076366403
+        },
+        "epidermis_vs_xylem": {
+            "pearson": 0.16689450512658133,
+            "spearman": 0.162939196811696,
+            "pearson_pairwise_filtered": 0.30398575972791847,
+            "spearman_pairwise_filtered": 0.31211170301350677
+        },
+        "guard_vs_mesophyll": {
+            "pearson": 0.256658364005782,
+            "spearman": 0.23970201470942834,
+            "pearson_pairwise_filtered": 0.41827021008642606,
+            "spearman_pairwise_filtered": 0.4226317109253298
+        },
+        "guard_vs_phloem": {
+            "pearson": 0.32028344093664757,
+            "spearman": 0.29442139598176464,
+            "pearson_pairwise_filtered": 0.5543222398408472,
+            "spearman_pairwise_filtered": 0.5583516928659278
+        },
+        "guard_vs_xylem": {
+            "pearson": 0.20636155158042235,
+            "spearman": 0.19754067717232862,
+            "pearson_pairwise_filtered": 0.35727650864734267,
+            "spearman_pairwise_filtered": 0.3639124795120695
+        },
+        "mesophyll_vs_phloem": {
+            "pearson": 0.2236664914360319,
+            "spearman": 0.20025981598655435,
+            "pearson_pairwise_filtered": 0.4309552466751012,
+            "spearman_pairwise_filtered": 0.41973108753357763
+        },
+        "mesophyll_vs_xylem": {
+            "pearson": 0.10463725449999177,
+            "spearman": 0.10422008171985245,
+            "pearson_pairwise_filtered": 0.1869265407078171,
+            "spearman_pairwise_filtered": 0.1743790282849384
+        },
+        "phloem_vs_xylem": {
+            "pearson": 0.2082149513109139,
+            "spearman": 0.19236900732352236,
+            "pearson_pairwise_filtered": 0.3935887241594247,
+            "spearman_pairwise_filtered": 0.3844564157590396
+        }
+    },
+    "pairwise_log2fc_contrast_filtered": {
+        "bundle_sheath_vs_epidermis": {
+            "pearson": 0.6616422163034903,
+            "spearman": 0.6131852294826745,
+            "n": 1617
+        },
+        "bundle_sheath_vs_guard": {
+            "pearson": 0.5989087855316421,
+            "spearman": 0.5566610141260296,
+            "n": 2870
+        },
+        "bundle_sheath_vs_mesophyll": {
+            "pearson": 0.44599671510492495,
+            "spearman": 0.3308925984756142,
+            "n": 621
+        },
+        "bundle_sheath_vs_phloem": {
+            "pearson": 0.4314566067401861,
+            "spearman": 0.4059619751121358,
+            "n": 829
+        },
+        "bundle_sheath_vs_xylem": {
+            "pearson": 0.332248733656363,
+            "spearman": 0.29427526961974104,
+            "n": 628
+        },
+        "epidermis_vs_guard": {
+            "pearson": 0.6444847444463419,
+            "spearman": 0.5825554552756033,
+            "n": 619
+        },
+        "epidermis_vs_mesophyll": {
+            "pearson": 0.5471316000694862,
+            "spearman": 0.5007288323460394,
+            "n": 793
+        },
+        "epidermis_vs_phloem": {
+            "pearson": 0.6849279835261832,
+            "spearman": 0.6357308075520199,
+            "n": 2370
+        },
+        "epidermis_vs_xylem": {
+            "pearson": 0.4703139617545494,
+            "spearman": 0.37611686986751935,
+            "n": 614
+        },
+        "guard_vs_mesophyll": {
+            "pearson": 0.5055382659679947,
+            "spearman": 0.4265088498345774,
+            "n": 1996
+        },
+        "guard_vs_phloem": {
+            "pearson": 0.6647987399382784,
+            "spearman": 0.6223146240988192,
+            "n": 3617
+        },
+        "guard_vs_xylem": {
+            "pearson": 0.3927895923306598,
+            "spearman": 0.32433606964635064,
+            "n": 1409
+        },
+        "mesophyll_vs_phloem": {
+            "pearson": 0.547494403859587,
+            "spearman": 0.5212448475560119,
+            "n": 1655
+        },
+        "mesophyll_vs_xylem": {
+            "pearson": 0.3764589214796208,
+            "spearman": 0.3182247240045556,
+            "n": 726
+        },
+        "phloem_vs_xylem": {
+            "pearson": 0.4965959260491569,
+            "spearman": 0.47024909029697926,
+            "n": 1280
+        }
+    },
+    "pairwise_direction_concordance": {
+        "bundle_sheath_vs_epidermis": {
+            "accuracy": 0.8181818181818182,
+            "balanced_accuracy": 0.8167350146526141,
+            "positive_accuracy": 0.8318284424379232,
+            "negative_accuracy": 0.801641586867305,
+            "n": 1617,
+            "n_positive": 886,
+            "n_negative": 731
+        },
+        "bundle_sheath_vs_guard": {
+            "accuracy": 0.7749128919860627,
+            "balanced_accuracy": 0.7803986554779869,
+            "positive_accuracy": 0.8404907975460123,
+            "negative_accuracy": 0.7203065134099617,
+            "n": 2870,
+            "n_positive": 1304,
+            "n_negative": 1566
+        },
+        "bundle_sheath_vs_mesophyll": {
+            "accuracy": 0.8196457326892109,
+            "balanced_accuracy": 0.7209271072247707,
+            "positive_accuracy": 0.873046875,
+            "negative_accuracy": 0.5688073394495413,
+            "n": 621,
+            "n_positive": 512,
+            "n_negative": 109
+        },
+        "bundle_sheath_vs_phloem": {
+            "accuracy": 0.7032569360675512,
+            "balanced_accuracy": 0.7056626139817629,
+            "positive_accuracy": 0.7173252279635258,
+            "negative_accuracy": 0.694,
+            "n": 829,
+            "n_positive": 329,
+            "n_negative": 500
+        },
+        "bundle_sheath_vs_xylem": {
+            "accuracy": 0.6863057324840764,
+            "balanced_accuracy": 0.6646548911777043,
+            "positive_accuracy": 0.7014028056112225,
+            "negative_accuracy": 0.627906976744186,
+            "n": 628,
+            "n_positive": 499,
+            "n_negative": 129
+        },
+        "epidermis_vs_guard": {
+            "accuracy": 0.8045234248788369,
+            "balanced_accuracy": 0.8135802872774036,
+            "positive_accuracy": 0.8577235772357723,
+            "negative_accuracy": 0.7694369973190348,
+            "n": 619,
+            "n_positive": 246,
+            "n_negative": 373
+        },
+        "epidermis_vs_mesophyll": {
+            "accuracy": 0.78562421185372,
+            "balanced_accuracy": 0.7488879003558719,
+            "positive_accuracy": 0.875,
+            "negative_accuracy": 0.6227758007117438,
+            "n": 793,
+            "n_positive": 512,
+            "n_negative": 281
+        },
+        "epidermis_vs_phloem": {
+            "accuracy": 0.8417721518987342,
+            "balanced_accuracy": 0.8416976288301431,
+            "positive_accuracy": 0.8463455149501661,
+            "negative_accuracy": 0.8370497427101201,
+            "n": 2370,
+            "n_positive": 1204,
+            "n_negative": 1166
+        },
+        "epidermis_vs_xylem": {
+            "accuracy": 0.7182410423452769,
+            "balanced_accuracy": 0.708670374115268,
+            "positive_accuracy": 0.7325581395348837,
+            "negative_accuracy": 0.6847826086956522,
+            "n": 614,
+            "n_positive": 430,
+            "n_negative": 184
+        },
+        "guard_vs_mesophyll": {
+            "accuracy": 0.7680360721442886,
+            "balanced_accuracy": 0.7477905073649755,
+            "positive_accuracy": 0.8,
+            "negative_accuracy": 0.6955810147299509,
+            "n": 1996,
+            "n_positive": 1385,
+            "n_negative": 611
+        },
+        "guard_vs_phloem": {
+            "accuracy": 0.808957699751175,
+            "balanced_accuracy": 0.8109099585203214,
+            "positive_accuracy": 0.7914572864321608,
+            "negative_accuracy": 0.8303626306084819,
+            "n": 3617,
+            "n_positive": 1990,
+            "n_negative": 1627
+        },
+        "guard_vs_xylem": {
+            "accuracy": 0.6941092973740242,
+            "balanced_accuracy": 0.7109520614329382,
+            "positive_accuracy": 0.6768060836501901,
+            "negative_accuracy": 0.7450980392156863,
+            "n": 1409,
+            "n_positive": 1052,
+            "n_negative": 357
+        },
+        "mesophyll_vs_phloem": {
+            "accuracy": 0.7945619335347432,
+            "balanced_accuracy": 0.7615362121221912,
+            "positive_accuracy": 0.6549912434325744,
+            "negative_accuracy": 0.8680811808118081,
+            "n": 1655,
+            "n_positive": 571,
+            "n_negative": 1084
+        },
+        "mesophyll_vs_xylem": {
+            "accuracy": 0.6129476584022039,
+            "balanced_accuracy": 0.6415755425874752,
+            "positive_accuracy": 0.5011441647597255,
+            "negative_accuracy": 0.7820069204152249,
+            "n": 726,
+            "n_positive": 437,
+            "n_negative": 289
+        },
+        "phloem_vs_xylem": {
+            "accuracy": 0.7296875,
+            "balanced_accuracy": 0.7133827335428833,
+            "positive_accuracy": 0.7723378212974297,
+            "negative_accuracy": 0.6544276457883369,
+            "n": 1280,
+            "n_positive": 817,
+            "n_negative": 463
+        }
+    },
+    "pairwise_da_detection": {
+        "bundle_sheath_vs_epidermis": {
+            "auroc": 0.6389044746962353,
+            "auprc": 0.03061971347712184,
+            "positive_rate": 0.015034867503486751,
+            "n_positive": 1617,
+            "n": 107550
+        },
+        "bundle_sheath_vs_guard": {
+            "auroc": 0.6218336286861967,
+            "auprc": 0.047777898634565504,
+            "positive_rate": 0.026685262668526267,
+            "n_positive": 2870,
+            "n": 107550
+        },
+        "bundle_sheath_vs_mesophyll": {
+            "auroc": 0.6512284047676284,
+            "auprc": 0.013962499806940455,
+            "positive_rate": 0.005774058577405858,
+            "n_positive": 621,
+            "n": 107550
+        },
+        "bundle_sheath_vs_phloem": {
+            "auroc": 0.5374183853507339,
+            "auprc": 0.009535120662294201,
+            "positive_rate": 0.007708042770804277,
+            "n_positive": 829,
+            "n": 107550
+        },
+        "bundle_sheath_vs_xylem": {
+            "auroc": 0.5471368750027552,
+            "auprc": 0.007629678280889242,
+            "positive_rate": 0.0058391445839144586,
+            "n_positive": 628,
+            "n": 107550
+        },
+        "epidermis_vs_guard": {
+            "auroc": 0.6306323500113438,
+            "auprc": 0.011836786648359333,
+            "positive_rate": 0.005755462575546258,
+            "n_positive": 619,
+            "n": 107550
+        },
+        "epidermis_vs_mesophyll": {
+            "auroc": 0.6002359059863487,
+            "auprc": 0.014592490726526717,
+            "positive_rate": 0.007373314737331473,
+            "n_positive": 793,
+            "n": 107550
+        },
+        "epidermis_vs_phloem": {
+            "auroc": 0.6295444137155272,
+            "auprc": 0.04307985057605188,
+            "positive_rate": 0.02203626220362622,
+            "n_positive": 2370,
+            "n": 107550
+        },
+        "epidermis_vs_xylem": {
+            "auroc": 0.5747449035850601,
+            "auprc": 0.0075178760448533066,
+            "positive_rate": 0.005708972570897257,
+            "n_positive": 614,
+            "n": 107550
+        },
+        "guard_vs_mesophyll": {
+            "auroc": 0.6171987237639156,
+            "auprc": 0.036994317354703786,
+            "positive_rate": 0.018558809855880987,
+            "n_positive": 1996,
+            "n": 107550
+        },
+        "guard_vs_phloem": {
+            "auroc": 0.627352867778824,
+            "auprc": 0.06322075135062447,
+            "positive_rate": 0.033630869363086936,
+            "n_positive": 3617,
+            "n": 107550
+        },
+        "guard_vs_xylem": {
+            "auroc": 0.5743548715937661,
+            "auprc": 0.01876749398609684,
+            "positive_rate": 0.01310088331008833,
+            "n_positive": 1409,
+            "n": 107550
+        },
+        "mesophyll_vs_phloem": {
+            "auroc": 0.6005663479285829,
+            "auprc": 0.030825789583563527,
+            "positive_rate": 0.015388191538819153,
+            "n_positive": 1655,
+            "n": 107550
+        },
+        "mesophyll_vs_xylem": {
+            "auroc": 0.5204922816325259,
+            "auprc": 0.007639521270358561,
+            "positive_rate": 0.006750348675034867,
+            "n_positive": 726,
+            "n": 107550
+        },
+        "phloem_vs_xylem": {
+            "auroc": 0.5869450713689188,
+            "auprc": 0.02011495162003809,
+            "positive_rate": 0.01190144119014412,
+            "n_positive": 1280,
+            "n": 107550
+        }
+    },
+    "pairwise_effect_size_calibration": {
+        "bundle_sheath_vs_epidermis": {
+            "mae": 1.3752207131928427,
+            "rmse": 1.4651702577574865,
+            "slope": 1.9558215459174562,
+            "n": 1617
+        },
+        "bundle_sheath_vs_guard": {
+            "mae": 1.4539816849768283,
+            "rmse": 1.5741121987387336,
+            "slope": 1.6286376789944068,
+            "n": 2870
+        },
+        "bundle_sheath_vs_mesophyll": {
+            "mae": 1.3707076419507436,
+            "rmse": 1.4482109004373458,
+            "slope": 1.3290090757494146,
+            "n": 621
+        },
+        "bundle_sheath_vs_phloem": {
+            "mae": 1.6050021128816632,
+            "rmse": 1.670055576045928,
+            "slope": 1.6995167109095481,
+            "n": 829
+        },
+        "bundle_sheath_vs_xylem": {
+            "mae": 1.5701282713931686,
+            "rmse": 1.6207858405939752,
+            "slope": 1.2437635908962612,
+            "n": 628
+        },
+        "epidermis_vs_guard": {
+            "mae": 1.2691191418938637,
+            "rmse": 1.3731440247584916,
+            "slope": 1.61684123390832,
+            "n": 619
+        },
+        "epidermis_vs_mesophyll": {
+            "mae": 1.4377729038477713,
+            "rmse": 1.4970493752699527,
+            "slope": 1.8996379964291634,
+            "n": 793
+        },
+        "epidermis_vs_phloem": {
+            "mae": 1.3486536015021133,
+            "rmse": 1.4559334014073684,
+            "slope": 1.8133654619020871,
+            "n": 2370
+        },
+        "epidermis_vs_xylem": {
+            "mae": 1.5345291865551656,
+            "rmse": 1.5911725109580064,
+            "slope": 1.8927228906313087,
+            "n": 614
+        },
+        "guard_vs_mesophyll": {
+            "mae": 1.4603921265645299,
+            "rmse": 1.5703396205293092,
+            "slope": 1.366831577549449,
+            "n": 1996
+        },
+        "guard_vs_phloem": {
+            "mae": 1.3819578776126311,
+            "rmse": 1.5121028656683042,
+            "slope": 1.6399948263118402,
+            "n": 3617
+        },
+        "guard_vs_xylem": {
+            "mae": 1.5696190187013899,
+            "rmse": 1.6756846462309645,
+            "slope": 1.0820307790729091,
+            "n": 1409
+        },
+        "mesophyll_vs_phloem": {
+            "mae": 1.4346339950895906,
+            "rmse": 1.518856897127686,
+            "slope": 1.6783166825379605,
+            "n": 1655
+        },
+        "mesophyll_vs_xylem": {
+            "mae": 1.6160400206677281,
+            "rmse": 1.6672236901810025,
+            "slope": 1.7628392143202212,
+            "n": 726
+        },
+        "phloem_vs_xylem": {
+            "mae": 1.527262454533372,
+            "rmse": 1.6060501935460998,
+            "slope": 1.692387364801995,
+            "n": 1280
+        }
+    },
+    "max_contrast_recovery": {
+        "top1_accuracy": 0.09133426313342631,
+        "top2_accuracy": 0.17381682938168294,
+        "top1_accuracy_pairwise_filtered": 0.1522160068846816,
+        "top2_accuracy_pairwise_filtered": 0.2688253012048193,
+        "n": 107550,
+        "n_pairwise_filtered": 9296
+    },
+    "ranking_metrics": {
+        "celltype_tau": {
+            "bundle_sheath": {
+                "average_precision": 0.006118791427097475,
+                "positive_rate": 0.001097164109716411,
+                "n_positive": 118,
+                "precision_at_100": 0.02,
+                "precision_at_500": 0.016,
+                "precision_at_1000": 0.011,
+                "precision_at_n_positives": 0.025423728813559324
+            },
+            "epidermis": {
+                "average_precision": 0.003207667484038132,
+                "positive_rate": 0.0008740120874012087,
+                "n_positive": 94,
+                "precision_at_100": 0.01,
+                "precision_at_500": 0.004,
+                "precision_at_1000": 0.004,
+                "precision_at_n_positives": 0.010638297872340425
+            },
+            "guard": {
+                "average_precision": 0.013787984473537757,
+                "positive_rate": 0.0036913063691306367,
+                "n_positive": 397,
+                "precision_at_100": 0.07,
+                "precision_at_500": 0.038,
+                "precision_at_1000": 0.029,
+                "precision_at_n_positives": 0.037783375314861464
+            },
+            "mesophyll": {
+                "average_precision": 0.0005448059554890196,
+                "positive_rate": 0.00046490004649000463,
+                "n_positive": 50,
+                "precision_at_100": 0.0,
+                "precision_at_500": 0.0,
+                "precision_at_1000": 0.0,
+                "precision_at_n_positives": 0.0
+            },
+            "phloem": {
+                "average_precision": 0.024070841001914672,
+                "positive_rate": 0.0038586703858670387,
+                "n_positive": 415,
+                "precision_at_100": 0.09,
+                "precision_at_500": 0.06,
+                "precision_at_1000": 0.048,
+                "precision_at_n_positives": 0.06265060240963856
+            },
+            "xylem": {
+                "average_precision": 0.0007363129301475982,
+                "positive_rate": 0.0005206880520688052,
+                "n_positive": 56,
+                "precision_at_100": 0.0,
+                "precision_at_500": 0.004,
+                "precision_at_1000": 0.002,
+                "precision_at_n_positives": 0.0
+            }
+        },
+        "pairwise_abs_log2fc": {
+            "bundle_sheath_vs_epidermis": {
+                "average_precision": 0.03061971347712184,
+                "positive_rate": 0.015034867503486751,
+                "n_positive": 1617,
+                "precision_at_100": 0.07,
+                "precision_at_500": 0.066,
+                "precision_at_1000": 0.067,
+                "precision_at_n_positives": 0.05442176870748299
+            },
+            "bundle_sheath_vs_guard": {
+                "average_precision": 0.047777898634565504,
+                "positive_rate": 0.026685262668526267,
+                "n_positive": 2870,
+                "precision_at_100": 0.1,
+                "precision_at_500": 0.108,
+                "precision_at_1000": 0.092,
+                "precision_at_n_positives": 0.08466898954703833
+            },
+            "bundle_sheath_vs_mesophyll": {
+                "average_precision": 0.013962499806940455,
+                "positive_rate": 0.005774058577405858,
+                "n_positive": 621,
+                "precision_at_100": 0.04,
+                "precision_at_500": 0.034,
+                "precision_at_1000": 0.032,
+                "precision_at_n_positives": 0.0322061191626409
+            },
+            "bundle_sheath_vs_phloem": {
+                "average_precision": 0.009535120662294201,
+                "positive_rate": 0.007708042770804277,
+                "n_positive": 829,
+                "precision_at_100": 0.02,
+                "precision_at_500": 0.016,
+                "precision_at_1000": 0.01,
+                "precision_at_n_positives": 0.010856453558504222
+            },
+            "bundle_sheath_vs_xylem": {
+                "average_precision": 0.007629678280889242,
+                "positive_rate": 0.0058391445839144586,
+                "n_positive": 628,
+                "precision_at_100": 0.02,
+                "precision_at_500": 0.012,
+                "precision_at_1000": 0.015,
+                "precision_at_n_positives": 0.01592356687898089
+            },
+            "epidermis_vs_guard": {
+                "average_precision": 0.011836786648359333,
+                "positive_rate": 0.005755462575546258,
+                "n_positive": 619,
+                "precision_at_100": 0.02,
+                "precision_at_500": 0.034,
+                "precision_at_1000": 0.023,
+                "precision_at_n_positives": 0.03231017770597738
+            },
+            "epidermis_vs_mesophyll": {
+                "average_precision": 0.014592490726526717,
+                "positive_rate": 0.007373314737331473,
+                "n_positive": 793,
+                "precision_at_100": 0.09,
+                "precision_at_500": 0.038,
+                "precision_at_1000": 0.032,
+                "precision_at_n_positives": 0.03783102143757881
+            },
+            "epidermis_vs_phloem": {
+                "average_precision": 0.04307985057605188,
+                "positive_rate": 0.02203626220362622,
+                "n_positive": 2370,
+                "precision_at_100": 0.13,
+                "precision_at_500": 0.1,
+                "precision_at_1000": 0.088,
+                "precision_at_n_positives": 0.07679324894514768
+            },
+            "epidermis_vs_xylem": {
+                "average_precision": 0.0075178760448533066,
+                "positive_rate": 0.005708972570897257,
+                "n_positive": 614,
+                "precision_at_100": 0.0,
+                "precision_at_500": 0.008,
+                "precision_at_1000": 0.009,
+                "precision_at_n_positives": 0.006514657980456026
+            },
+            "guard_vs_mesophyll": {
+                "average_precision": 0.036994317354703786,
+                "positive_rate": 0.018558809855880987,
+                "n_positive": 1996,
+                "precision_at_100": 0.16,
+                "precision_at_500": 0.096,
+                "precision_at_1000": 0.087,
+                "precision_at_n_positives": 0.07064128256513026
+            },
+            "guard_vs_phloem": {
+                "average_precision": 0.06322075135062447,
+                "positive_rate": 0.033630869363086936,
+                "n_positive": 3617,
+                "precision_at_100": 0.1,
+                "precision_at_500": 0.134,
+                "precision_at_1000": 0.125,
+                "precision_at_n_positives": 0.10450649709704175
+            },
+            "guard_vs_xylem": {
+                "average_precision": 0.01876749398609684,
+                "positive_rate": 0.01310088331008833,
+                "n_positive": 1409,
+                "precision_at_100": 0.04,
+                "precision_at_500": 0.044,
+                "precision_at_1000": 0.039,
+                "precision_at_n_positives": 0.0333569907735983
+            },
+            "mesophyll_vs_phloem": {
+                "average_precision": 0.030825789583563527,
+                "positive_rate": 0.015388191538819153,
+                "n_positive": 1655,
+                "precision_at_100": 0.14,
+                "precision_at_500": 0.104,
+                "precision_at_1000": 0.087,
+                "precision_at_n_positives": 0.0688821752265861
+            },
+            "mesophyll_vs_xylem": {
+                "average_precision": 0.007639521270358561,
+                "positive_rate": 0.006750348675034867,
+                "n_positive": 726,
+                "precision_at_100": 0.02,
+                "precision_at_500": 0.014,
+                "precision_at_1000": 0.011,
+                "precision_at_n_positives": 0.011019283746556474
+            },
+            "phloem_vs_xylem": {
+                "average_precision": 0.02011495162003809,
+                "positive_rate": 0.01190144119014412,
+                "n_positive": 1280,
+                "precision_at_100": 0.06,
+                "precision_at_500": 0.054,
+                "precision_at_1000": 0.043,
+                "precision_at_n_positives": 0.040625
+            }
+        }
+    },
+    "tau": {
+        "pearson": 0.12036346228424455,
+        "spearman": 0.096510088510368,
+        "pearson_pairwise_filtered": 0.10626208775162468,
+        "spearman_pairwise_filtered": 0.09079096959067995
+    },
+    "tau_auc": {
+        "auroc_all_peaks": 0.648521843070308,
+        "auroc_pairwise_filtered": 0.5726355521111398,
+        "auprc_all_peaks": 0.022174252183352533,
+        "auprc_pairwise_filtered": 0.15288216447177363,
+        "positive_rate": 0.010506838743270509
+    },
+    "specificity_accuracy": {
+        "all_peaks": 0.2686378428637843,
+        "tau_filtered": 0.4920353982300885,
+        "pairwise_filtered": 0.41566265060240964,
+        "n_tau_filtered": 1130,
+        "n_pairwise_filtered": 9296,
+        "baseline": 0.1667
+    },
+    "top2_specificity_accuracy": {
+        "all_peaks": 0.4610413761041376,
+        "tau_filtered": 0.6672566371681415,
+        "pairwise_filtered": 0.6218803786574871,
+        "baseline": 0.3333
+    }
+}
