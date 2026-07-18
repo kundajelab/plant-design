@@ -12,7 +12,7 @@ chrom_sizes="${REPO_ROOT}/data/Sbicolor_730_v5.0.chrom.sizes"
 
 mkdir -p "${out_dir}" "${REPO_ROOT}/data"
 
-rsync --progress "${ref_dir}/Sbicolor_730_v5.0.fa" "${genome_fasta}"
+rsync --ignore-existing --progress "${ref_dir}/Sbicolor_730_v5.0.fa" "${genome_fasta}"
 samtools faidx "${genome_fasta}"
 cut -f1,2 "${genome_fasta}.fai" > "${chrom_sizes}"
 

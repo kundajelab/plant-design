@@ -44,13 +44,13 @@ bash src/data_preprocessing/make_bigwigs.sh
 python configs/write_folds.py
 
 # 3. Generate non-peak background regions
-bash src/chrombpnet/fit/nonpeaks.sh
+python src/chrombpnet/fit/nonpeaks.py --interactive | parallel
 
 # 4. Train bias models (all pseudobulks, all folds)
-bash src/chrombpnet/fit/bias.sh
+python src/chrombpnet/fit/bias.py
 
 # 5. Train accessibility models
-bash src/chrombpnet/fit/accessibility.sh
+python src/chrombpnet/fit/accessibility.py
 
 # 6. Convert TensorFlow → PyTorch
 uv run python src/chrombpnet/fit/convert_to_torch.py

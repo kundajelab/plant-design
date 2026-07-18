@@ -7,6 +7,7 @@ import sys
 
 from slurm_launcher import (
     REPO_ROOT,
+    SCRIPT_DIR,
     add_common_args,
     resolve_dataset_and_jobs,
     submit_jobs,
@@ -45,6 +46,14 @@ def main():
                 f"acc_{args.dataset}_{pseudobulk}_f{fold}".replace(".", "p"),
             )
             command = [
+                "apptainer",
+                "exec",
+                "--nv",
+                "--bind",
+                f"{REPO_ROOT}:{REPO_ROOT}",
+                "--pwd",
+                SCRIPT_DIR,
+                args.apptainer_image,
                 "python",
                 "cli.py",
                 "train",

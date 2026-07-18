@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shlex
 import subprocess
 import sys
@@ -19,6 +20,7 @@ def add_common_args(
     *,
     default_mem: str,
     default_time: str,
+    default_gpus: int = 1,
 ) -> None:
     parser.add_argument(
         "--dataset",
@@ -63,17 +65,16 @@ def add_common_args(
     parser.add_argument(
         "--constraint", type=str, default="GPU_GEN:AMP|GPU_GEN:LOV|GPU_GEN:HPR"
     )
-    parser.add_argument("--gpus", type=int, default=1)
+    parser.add_argument("--gpus", type=int, default=default_gpus)
     parser.add_argument("--cpus-per-task", type=int, default=4)
     parser.add_argument("--mem", type=str, default=default_mem)
     parser.add_argument("--time", type=str, default=default_time)
     parser.add_argument("--numba-threads", type=int, default=4)
     parser.add_argument(
-        "--env",
-        dest="chrombpnet_env",
+        "--apptainer-image",
         type=str,
-        default="chrombpnet",
-        help="Conda/mamba environment for TensorFlow ChromBPNet training.",
+        default=os.environ.get("CHROMBPNET_APPTAINER", "chrombpnet.sif"),
+        help="ChromBPNet Apptainer image path. Defaults to $CHROMBPNET_APPTAINER or chrombpnet.sif.",
     )
 
 
@@ -130,13 +131,18 @@ def make_sbatch_script(
     log_dir: Path,
     command: list[str | Path],
 ) -> str:
+    gpu_lines = ""
+    gpu_setup = ""
+    if args.gpus > 0:
+        gpu_lines = f"#SBATCH --gpus={args.gpus}\n#SBATCH -C {args.constraint}\n"
+        gpu_setup = "nvidia-smi -L\n"
+
     return f"""#!/bin/bash -l
 #SBATCH --job-name={job_name}
 #SBATCH --ntasks=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --nodes=1
-#SBATCH --gpus={args.gpus}
-#SBATCH -C {args.constraint}
+{gpu_lines}\
 #SBATCH --cpus-per-task={args.cpus_per_task}
 #SBATCH --mem={args.mem}
 #SBATCH --partition={args.partition}
@@ -149,10 +155,8 @@ set -euo pipefail
 if [[ -f "${{HOME}}/bs.sh" ]]; then
     source "${{HOME}}/bs.sh"
 fi
-mamba activate {shlex.quote(args.chrombpnet_env)}
 export NUMBA_NUM_THREADS={args.numba_threads}
-export LD_LIBRARY_PATH="${{LD_LIBRARY_PATH:-}}:${{CONDA_PREFIX}}/lib"
-nvidia-smi -L
+{gpu_setup}\
 
 cd {shlex.quote(str(SCRIPT_DIR))}
 {wrap_command(command)}

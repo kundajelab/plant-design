@@ -65,7 +65,6 @@ data/
 ```
 
 The base dataset is the default for training and analysis scripts. Use
-`DATASET=fine` or `DATASET=coarse` with the plain shell training scripts, and
 `--dataset fine` or `--dataset coarse` with Python entrypoints such as the
 SLURM launchers, `convert_to_torch.py`, `benchmark.py`, and DeepLIFT/SHAP
 scripts.
@@ -73,7 +72,8 @@ scripts.
 ### 2. Generate non-peak background regions
 
 ```bash
-bash src/chrombpnet/fit/nonpeaks.sh
+python src/chrombpnet/fit/nonpeaks.py --interactive | parallel
+python src/chrombpnet/fit/nonpeaks.py --dataset fine --dry-run
 ```
 
 ### 3. Train bias models
@@ -81,19 +81,17 @@ bash src/chrombpnet/fit/nonpeaks.sh
 Trains Tn5 insertion bias models for all pseudobulks across all 5 folds:
 
 ```bash
-bash src/chrombpnet/fit/bias.sh
 python src/chrombpnet/fit/bias.py --dataset fine --dry-run
 python src/chrombpnet/fit/bias.py --dataset fine --interactive
 ```
 
-`--interactive` prints one local training command per selected pseudobulk/fold
+`--interactive` prints one local command per selected pseudobulk/fold
 to stdout, so it can be piped to `parallel`, `simple_gpu_scheduler`, or another
 local scheduler.
 
 ### 4. Train accessibility (ChromBPNet) models
 
 ```bash
-bash src/chrombpnet/fit/accessibility.sh
 python src/chrombpnet/fit/accessibility.py --dataset fine --dry-run
 python src/chrombpnet/fit/accessibility.py --dataset fine --interactive
 ```
