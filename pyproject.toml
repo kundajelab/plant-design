@@ -52,6 +52,7 @@ notebook = [
 ]
 
 [tool.uv]
+exclude-dependencies = ["macs3"]
 required-environments = [
     "sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
