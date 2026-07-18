@@ -28,13 +28,19 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
-from da_peaks import DA_PEAK_CHOICES, da_suffix, resolve_loci_path
+from da_peaks import (
+    DATASETS,
+    DA_PEAK_CHOICES,
+    da_suffix,
+    model_dir as dataset_model_dir,
+    output_subdir,
+    read_pseudobulks,
+    resolve_loci_path,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "src" / "chrombpnet" / "benchmark"))
 
-from chrombpnet.datasets import add_dataset_arg, get_dataset  # noqa: E402
 from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
 
 N_FOLDS = 5
@@ -75,7 +81,12 @@ def main():
         default=None,
         help="Run attributions on DA peaks instead of all cell-type peaks (default: all peaks)",
     )
-    add_dataset_arg(parser)
+    parser.add_argument(
+        "--dataset",
+        choices=DATASETS,
+        default="base",
+        help="Dataset namespace to use (default: base).",
+    )
     add_model_variant_args(
         parser,
         finetuned_help="Use finetuned accessibility models instead of base torch/ models",
@@ -100,7 +111,6 @@ def main():
     parser.add_argument("--time", type=str, default="48:00:00")
     args = parser.parse_args()
     variant = resolve_model_variant(args)
-    dataset = get_dataset(REPO_ROOT, args.dataset)
     fine_tag = variant["fine_tag"]
     model_subdir = variant["model_subdir"]
     adapter_id = variant["adapter_id"]
@@ -111,10 +121,10 @@ def main():
     )
 
     if adapter_id is not None:
-        out_subdir = dataset.output_subdir(f"chrombpnet_adapter_{adapter_id}")
+        out_subdir = output_subdir(args.dataset, f"chrombpnet_adapter_{adapter_id}")
     else:
         base_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
-        out_subdir = dataset.output_subdir(base_subdir)
+        out_subdir = output_subdir(args.dataset, base_subdir)
 
     if args.da_peaks is not None and args.dataset != "base":
         print(
@@ -132,7 +142,7 @@ def main():
         if not model_types:
             sys.exit(0)
 
-    pseudobulks = dataset.pseudobulks()
+    pseudobulks = read_pseudobulks(REPO_ROOT, args.dataset)
 
     attr_dir = REPO_ROOT / "attributions"
     log_dir = REPO_ROOT / "logs" / "chrombpnet_deepliftshap"
@@ -144,7 +154,7 @@ def main():
 
     for pseudobulk in pseudobulks:
         peaks_path = resolve_loci_path(
-            REPO_ROOT, pseudobulk, args.da_peaks, dataset=dataset
+            REPO_ROOT, pseudobulk, args.da_peaks, dataset=args.dataset
         )
         if not peaks_path.exists():
             skipped_missing += len(model_types) * len(heads)
@@ -155,7 +165,7 @@ def main():
             continue
 
         for model_type in model_types:
-            model_dir = dataset.model_dir(pseudobulk) / model_subdir
+            model_dir = dataset_model_dir(REPO_ROOT, args.dataset, pseudobulk) / model_subdir
             model_paths = [
                 model_dir / f"{pseudobulk}_f{fold}.{model_type}.torch"
                 for fold in range(N_FOLDS)
@@ -171,7 +181,7 @@ def main():
             if adapter_id is not None:
                 adapter_paths = [
                     REPO_ROOT
-                    / dataset.model_dir(pseudobulk).relative_to(REPO_ROOT)
+                    / dataset_model_dir(REPO_ROOT, args.dataset, pseudobulk).relative_to(REPO_ROOT)
                     / "adapters"
                     / adapter_id
                     / f"{pseudobulk}_f{fold}.adapter.pt"

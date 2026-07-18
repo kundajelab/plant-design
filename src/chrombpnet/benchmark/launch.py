@@ -19,11 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-sys.path.insert(0, str(REPO_ROOT / "src"))
-
-from chrombpnet.datasets import add_dataset_arg, get_dataset  # noqa: E402
-
 BENCHMARK_DIR = REPO_ROOT / "src" / "chrombpnet" / "benchmark"
+DATASETS = ("base", "fine", "coarse")
 
 
 @dataclass(frozen=True)
@@ -116,9 +113,27 @@ def slurm_name(text):
     )
 
 
-def existing_cross_path(dataset, variant, pseudobulk):
+def pseudobulk_file(dataset):
+    suffix = "" if dataset == "base" else f"_{dataset}"
+    return REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
+
+
+def read_pseudobulks(dataset):
+    return [
+        line.strip()
+        for line in pseudobulk_file(dataset).read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+
+
+def output_path(dataset, root, subdir):
+    suffix = "" if dataset == "base" else f"_{dataset}"
+    return root / f"{subdir}{suffix}"
+
+
+def existing_cross_path(dataset_name, variant, pseudobulk):
     metrics_subdir = variant.cross_dir.relative_to(REPO_ROOT / "performance_metrics")
-    path = dataset.output_path(REPO_ROOT / "performance_metrics", metrics_subdir) / f"{pseudobulk}.json"
+    path = output_path(dataset_name, REPO_ROOT / "performance_metrics", metrics_subdir) / f"{pseudobulk}.json"
     return path if path.exists() else None
 
 
@@ -128,13 +143,13 @@ def benchmark_da_peaks_path(da_path):
     )
 
 
-def build_variant_job(args, dataset, variant):
+def build_variant_job(args, variant):
     cross = []
     serial = []
     skipped = 0
 
     for pseudobulk in args.pseudobulks:
-        if existing_cross_path(dataset, variant, pseudobulk) is not None and not args.rerun:
+        if existing_cross_path(args.dataset, variant, pseudobulk) is not None and not args.rerun:
             skipped += 1
             continue
         cmd = [
@@ -287,7 +302,12 @@ def main():
         action="append",
         default=None,
     )
-    add_dataset_arg(parser)
+    parser.add_argument(
+        "--dataset",
+        choices=DATASETS,
+        default="base",
+        help="Dataset namespace to benchmark (default: base).",
+    )
     parser.add_argument("--rerun", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
@@ -313,16 +333,18 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
-    dataset = get_dataset(REPO_ROOT, args.dataset)
-    args.pseudobulks = args.pseudobulks or dataset.pseudobulks()
+    choices = read_pseudobulks(args.dataset)
+    args.pseudobulks = args.pseudobulks or choices
     for pseudobulk in args.pseudobulks:
-        try:
-            dataset.validate_pseudobulk(pseudobulk)
-        except ValueError as exc:
-            print(f"Error: {exc}", file=sys.stderr)
+        if pseudobulk not in choices:
+            print(
+                f"Error: unknown pseudobulk '{pseudobulk}' for dataset '{args.dataset}'. "
+                f"Choose one of: {', '.join(choices)}",
+                file=sys.stderr,
+            )
             sys.exit(1)
     variant_names = args.variant or (["base"] if args.dataset != "base" else list(VARIANTS))
-    jobs = [build_variant_job(args, dataset, VARIANTS[name]) for name in variant_names]
+    jobs = [build_variant_job(args, VARIANTS[name]) for name in variant_names]
     submit_jobs(args, jobs)
 
 

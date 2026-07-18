@@ -3,6 +3,7 @@
 from pathlib import Path
 
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
+DATASETS = ("base", "fine", "coarse")
 DA_PEAK_CHOICES = ["tau", "pairwise", "pairwise_higher", "specific_union"]
 
 
@@ -25,23 +26,61 @@ def resolve_da_bed(repo_root, da_peaks, pseudobulk):
     raise ValueError(f"unknown DA peak set: {da_peaks}")
 
 
-def resolve_loci_path(repo_root, pseudobulk, da_peaks=None, dataset=None):
+def dataset_suffix(dataset):
+    return "" if dataset == "base" else f"_{dataset}"
+
+
+def output_subdir(dataset, base):
+    return base if dataset == "base" else f"{base}_{dataset}"
+
+
+def model_dir(repo_root, dataset, pseudobulk):
+    root = Path(repo_root) / "models"
+    if dataset != "base":
+        root = root / dataset
+    return root / pseudobulk
+
+
+def read_pseudobulks(repo_root, dataset):
+    path = Path(repo_root) / "configs" / f"pseudobulks{dataset_suffix(dataset)}.txt"
+    return [
+        line.strip()
+        for line in path.read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+
+
+def validate_pseudobulk(repo_root, dataset, pseudobulk):
+    choices = read_pseudobulks(repo_root, dataset)
+    if pseudobulk not in choices:
+        raise ValueError(
+            f"unknown pseudobulk '{pseudobulk}' for dataset '{dataset}'. "
+            f"Choose one of: {', '.join(choices)}"
+        )
+
+
+def peaks_path(repo_root, dataset, pseudobulk, *, acgt=False):
+    suffix = "_peaks_ACGT.narrowPeak" if acgt else "_peaks.narrowPeak"
+    return (
+        Path(repo_root)
+        / "data"
+        / f"peaks{dataset_suffix(dataset)}"
+        / f"{pseudobulk}{suffix}"
+    )
+
+
+def resolve_loci_path(repo_root, pseudobulk, da_peaks=None, dataset="base"):
     """Resolve all-peaks or DA-peaks loci path for a pseudobulk."""
-    if dataset is not None and da_peaks is None:
-        return dataset.peaks_path(pseudobulk, acgt=True)
     if da_peaks is None:
-        return Path(repo_root) / "data" / "peaks" / f"{pseudobulk}_peaks_ACGT.narrowPeak"
+        return peaks_path(repo_root, dataset, pseudobulk, acgt=True)
     return resolve_da_bed(repo_root, da_peaks, pseudobulk)
 
 
-def resolve_ohe_path(repo_root, pseudobulk, da_peaks=None, dataset=None):
+def resolve_ohe_path(repo_root, pseudobulk, da_peaks=None, dataset="base"):
     """Resolve the OHE npz path matching a pseudobulk and optional DA peak set."""
-    subdir = "chrombpnet"
-    if dataset is not None:
-        subdir = dataset.output_subdir(subdir)
     return (
         Path(repo_root)
         / "attributions"
-        / subdir
+        / output_subdir(dataset, "chrombpnet")
         / f"{pseudobulk}_ohe{da_suffix(da_peaks)}.npz"
     )

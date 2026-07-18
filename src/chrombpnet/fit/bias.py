@@ -8,6 +8,10 @@ from pathlib import Path
 from slurm_launcher import (
     REPO_ROOT,
     add_common_args,
+    bigwig_path,
+    model_dir,
+    nonpeaks_path,
+    peaks_path,
     resolve_dataset_and_jobs,
     sanitize_job_name,
     submit_jobs,
@@ -22,14 +26,14 @@ def parse_args():
 
 def main():
     args = parse_args()
-    dataset, pseudobulks, folds = resolve_dataset_and_jobs(args)
+    pseudobulks, folds = resolve_dataset_and_jobs(args)
     log_dir = REPO_ROOT / "logs" / "chrombpnet_bias"
 
     jobs = []
     skipped = 0
     for pseudobulk in pseudobulks:
         for fold in folds:
-            out_dir = dataset.model_dir(pseudobulk) / f"bias_f{fold}"
+            out_dir = model_dir(args.dataset, pseudobulk) / f"bias_f{fold}"
             done_path = out_dir / "models" / f"f{fold}_bias.h5"
             if not args.rerun and done_path.exists():
                 skipped += 1
@@ -42,7 +46,7 @@ def main():
                 "bias",
                 "train",
                 "-bw",
-                dataset.bigwig_path(pseudobulk),
+                bigwig_path(args.dataset, pseudobulk),
                 "-d",
                 "ATAC",
                 "-g",
@@ -50,9 +54,9 @@ def main():
                 "-c",
                 REPO_ROOT / "data" / "Sbicolor_730_v5.0.chrom.sizes",
                 "-p",
-                dataset.peaks_path(pseudobulk),
+                peaks_path(args.dataset, pseudobulk),
                 "-n",
-                dataset.nonpeaks_path(pseudobulk, fold),
+                nonpeaks_path(args.dataset, pseudobulk, fold),
                 "-fl",
                 REPO_ROOT / "configs" / f"fold_{fold}.json",
                 "-b",

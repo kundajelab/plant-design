@@ -23,12 +23,42 @@ from tangermeme.predict import predict
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from chrombpnet.datasets import add_dataset_arg, get_dataset  # noqa: E402
 from daicon import load_model_with_adapter  # noqa: E402
 from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
 
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
+DATASETS = ("base", "fine", "coarse")
+
+
+def pseudobulk_file(dataset):
+    suffix = "" if dataset == "base" else f"_{dataset}"
+    return REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
+
+
+def read_pseudobulks(dataset):
+    return [
+        line.strip()
+        for line in pseudobulk_file(dataset).read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+
+
+def data_dir(dataset, name):
+    suffix = "" if dataset == "base" else f"_{dataset}"
+    return REPO_ROOT / "data" / f"{name}{suffix}"
+
+
+def model_dir(dataset, pseudobulk):
+    root = REPO_ROOT / "models"
+    if dataset != "base":
+        root = root / dataset
+    return root / pseudobulk
+
+
+def output_path(dataset, root, subdir):
+    suffix = "" if dataset == "base" else f"_{dataset}"
+    return root / f"{subdir}{suffix}"
 
 
 def main():
@@ -42,7 +72,12 @@ def main():
         required=True,
         help="The name of the pseudobulk to benchmark",
     )
-    add_dataset_arg(parser)
+    parser.add_argument(
+        "--dataset",
+        choices=DATASETS,
+        default="base",
+        help="Dataset namespace to benchmark (default: base).",
+    )
     parser.add_argument(
         "-o",
         "--save-output",
@@ -59,11 +94,13 @@ def main():
     args = parser.parse_args()
 
     variant = resolve_model_variant(args)
-    dataset = get_dataset(REPO_ROOT, args.dataset)
-    try:
-        dataset.validate_pseudobulk(args.pseudobulk)
-    except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+    if args.pseudobulk not in read_pseudobulks(args.dataset):
+        choices = ", ".join(read_pseudobulks(args.dataset))
+        print(
+            f"Error: unknown pseudobulk '{args.pseudobulk}' for dataset '{args.dataset}'. "
+            f"Choose one of: {choices}",
+            file=sys.stderr,
+        )
         sys.exit(1)
     model_subdir = variant["model_subdir"]
     adapter_id = variant["adapter_id"]
@@ -76,8 +113,8 @@ def main():
     n_folds = len(chrom_splits)
 
     # Construct data paths and verify that they exist.
-    peaks_path = str(dataset.peaks_path(args.pseudobulk))
-    bw_path = str(dataset.bigwig_path(args.pseudobulk))
+    peaks_path = str(data_dir(args.dataset, "peaks") / f"{args.pseudobulk}_peaks.narrowPeak")
+    bw_path = str(data_dir(args.dataset, "bigwigs") / f"{args.pseudobulk}.bw")
     for path, label in [(peaks_path, "peaks"), (bw_path, "bigwig")]:
         if not Path(path).exists():
             print(f"Error: {label} not found: {path}", file=sys.stderr)
@@ -85,16 +122,14 @@ def main():
 
     # Construct model paths and verify that they exist.
     model_paths = [
-        REPO_ROOT
-        / dataset.model_dir(args.pseudobulk).relative_to(REPO_ROOT)
+        model_dir(args.dataset, args.pseudobulk)
         / model_subdir
         / f"{args.pseudobulk}_f{fold}.torch"
         for fold in range(n_folds)
     ]
     adapter_paths = (
         [
-            REPO_ROOT
-            / dataset.model_dir(args.pseudobulk).relative_to(REPO_ROOT)
+            model_dir(args.dataset, args.pseudobulk)
             / "adapters"
             / adapter_id
             / f"{args.pseudobulk}_f{fold}.adapter.pt"
@@ -233,7 +268,7 @@ def main():
             "counts_spearman": counts_spearman_all,
         },
     }
-    metrics_dir = dataset.output_path(REPO_ROOT / "performance_metrics", metrics_subdir)
+    metrics_dir = output_path(args.dataset, REPO_ROOT / "performance_metrics", metrics_subdir)
     metrics_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = metrics_dir / f"{args.pseudobulk}.json"
     with open(metrics_path, "w") as f:
@@ -241,7 +276,7 @@ def main():
     print(f"\nMetrics saved to {metrics_path}")
 
     if args.save_output:
-        output_dir = dataset.output_path(REPO_ROOT / "predictions", predictions_subdir)
+        output_dir = output_path(args.dataset, REPO_ROOT / "predictions", predictions_subdir)
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / f"{args.pseudobulk}.npz"
         scaled_preds = {

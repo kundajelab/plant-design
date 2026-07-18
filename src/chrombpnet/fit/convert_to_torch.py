@@ -8,25 +8,44 @@ Examples:
 """
 
 import argparse
-import sys
 from pathlib import Path
 
-import torch
 import tqdm
-from bpnetlite.bpnet import BPNet
-from bpnetlite.chrombpnet import ChromBPNet
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-sys.path.insert(0, str(REPO_ROOT / "src"))
+DATASETS = ("base", "fine", "coarse")
 
-from chrombpnet.datasets import add_dataset_arg, get_dataset  # noqa: E402
+
+def pseudobulk_file(dataset):
+    suffix = "" if dataset == "base" else f"_{dataset}"
+    return REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
+
+
+def read_pseudobulks(dataset):
+    return [
+        line.strip()
+        for line in pseudobulk_file(dataset).read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+
+
+def model_dir(dataset, pseudobulk):
+    root = REPO_ROOT / "models"
+    if dataset != "base":
+        root = root / dataset
+    return root / pseudobulk
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
-    add_dataset_arg(parser)
+    parser.add_argument(
+        "--dataset",
+        choices=DATASETS,
+        default="base",
+        help="Dataset namespace to convert (default: base).",
+    )
     parser.add_argument(
         "-p",
         "--pseudobulk",
@@ -55,13 +74,17 @@ def parse_args():
 
 def main():
     args = parse_args()
-    dataset = get_dataset(REPO_ROOT, args.dataset)
-    pseudobulks = args.pseudobulks or dataset.pseudobulks()
+    import torch
+    from bpnetlite.bpnet import BPNet
+    from bpnetlite.chrombpnet import ChromBPNet
+
+    pseudobulks = args.pseudobulks or read_pseudobulks(args.dataset)
     folds = args.folds or list(range(5))
 
     for pseudobulk in pseudobulks:
-        dataset.validate_pseudobulk(pseudobulk)
-        out_dir = dataset.model_dir(pseudobulk) / "torch"
+        if pseudobulk not in read_pseudobulks(args.dataset):
+            raise SystemExit(f"Unknown pseudobulk '{pseudobulk}' for dataset '{args.dataset}'")
+        out_dir = model_dir(args.dataset, pseudobulk) / "torch"
         out_dir.mkdir(exist_ok=True, parents=True)
         print(f"\nConverting {args.dataset}/{pseudobulk} -> {out_dir}")
 
@@ -74,9 +97,9 @@ def main():
             if not args.overwrite and all(path.exists() for path in out_paths):
                 continue
 
-            model_dir = dataset.model_dir(pseudobulk) / f"acc_f{fold}" / "models"
-            bias_path = model_dir / "bias_model_scaled.h5"
-            accessibility_path = model_dir / "chrombpnet_nobias.h5"
+            tf_model_dir = model_dir(args.dataset, pseudobulk) / f"acc_f{fold}" / "models"
+            bias_path = tf_model_dir / "bias_model_scaled.h5"
+            accessibility_path = tf_model_dir / "chrombpnet_nobias.h5"
             missing = [path for path in [bias_path, accessibility_path] if not path.exists()]
             if missing:
                 missing_txt = "\n".join(str(path) for path in missing)

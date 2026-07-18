@@ -10,11 +10,9 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-sys.path.insert(0, str(REPO_ROOT / "src"))
-
-from chrombpnet.datasets import DATASET_NAMES, get_dataset  # noqa: E402
-
 SCRIPT_DIR = Path(__file__).resolve().parent
+
+DATASET_NAMES = ("base", "fine", "coarse")
 
 
 def add_common_args(
@@ -80,16 +78,68 @@ def add_common_args(
     )
 
 
+def pseudobulk_file(dataset: str) -> Path:
+    suffix = "" if dataset == "base" else f"_{dataset}"
+    return REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
+
+
+def read_pseudobulks(dataset: str) -> list[str]:
+    return [
+        line.strip()
+        for line in pseudobulk_file(dataset).read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+
+
+def validate_pseudobulk(dataset: str, pseudobulk: str) -> None:
+    choices = read_pseudobulks(dataset)
+    if pseudobulk not in choices:
+        joined = ", ".join(choices)
+        raise SystemExit(
+            f"Error: unknown pseudobulk '{pseudobulk}' for dataset '{dataset}'. "
+            f"Choose one of: {joined}"
+        )
+
+
+def data_dir(dataset: str, name: str) -> Path:
+    suffix = "" if dataset == "base" else f"_{dataset}"
+    return REPO_ROOT / "data" / f"{name}{suffix}"
+
+
+def bigwig_path(dataset: str, pseudobulk: str) -> Path:
+    return data_dir(dataset, "bigwigs") / f"{pseudobulk}.bw"
+
+
+def peaks_path(dataset: str, pseudobulk: str, *, acgt: bool = False) -> Path:
+    suffix = "_peaks_ACGT.narrowPeak" if acgt else "_peaks.narrowPeak"
+    return data_dir(dataset, "peaks") / f"{pseudobulk}{suffix}"
+
+
+def nonpeaks_path(dataset: str, pseudobulk: str, fold: int) -> Path:
+    return data_dir(dataset, "nonpeaks") / f"{pseudobulk}_fold_{fold}_negatives.bed"
+
+
+def model_dir(dataset: str, pseudobulk: str) -> Path:
+    root = REPO_ROOT / "models"
+    if dataset != "base":
+        root = root / dataset
+    return root / pseudobulk
+
+
+def output_subdir(dataset: str, base: str) -> str:
+    return base if dataset == "base" else f"{base}_{dataset}"
+
+
+def output_path(dataset: str, root: Path, base: str | Path) -> Path:
+    return root / output_subdir(dataset, str(base))
+
+
 def resolve_dataset_and_jobs(args: argparse.Namespace):
-    dataset = get_dataset(REPO_ROOT, args.dataset)
-    pseudobulks = args.pseudobulks or dataset.pseudobulks()
+    pseudobulks = args.pseudobulks or read_pseudobulks(args.dataset)
     folds = args.folds or list(range(5))
     for pseudobulk in pseudobulks:
-        try:
-            dataset.validate_pseudobulk(pseudobulk)
-        except ValueError as exc:
-            raise SystemExit(f"Error: {exc}") from exc
-    return dataset, pseudobulks, folds
+        validate_pseudobulk(args.dataset, pseudobulk)
+    return pseudobulks, folds
 
 
 def sanitize_job_name(name: str) -> str:

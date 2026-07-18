@@ -19,13 +19,19 @@ import torch
 from bpnetlite.attribute import deep_lift_shap
 from bpnetlite.bpnet import CountWrapper, ProfileWrapper
 from tangermeme.io import extract_loci
-from da_peaks import DA_PEAK_CHOICES, da_suffix, resolve_loci_path
+from da_peaks import (
+    DATASETS,
+    DA_PEAK_CHOICES,
+    da_suffix,
+    model_dir as dataset_model_dir,
+    output_subdir,
+    resolve_loci_path,
+    validate_pseudobulk,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "src" / "chrombpnet" / "benchmark"))
 
-from chrombpnet.datasets import add_dataset_arg, get_dataset  # noqa: E402
 from daicon import (  # noqa: E402
     iter_adapters,
     load_accessibility_with_adapter,
@@ -59,7 +65,12 @@ def main():
         required=True,
         help="The name of the pseudobulk to benchmark",
     )
-    add_dataset_arg(parser)
+    parser.add_argument(
+        "--dataset",
+        choices=DATASETS,
+        default="base",
+        help="Dataset namespace to use (default: base).",
+    )
     parser.add_argument(
         "-m",
         "--model-type",
@@ -96,9 +107,8 @@ def main():
     )
     args = parser.parse_args()
     variant = resolve_model_variant(args)
-    dataset = get_dataset(REPO_ROOT, args.dataset)
     try:
-        dataset.validate_pseudobulk(args.pseudobulk)
+        validate_pseudobulk(REPO_ROOT, args.dataset, args.pseudobulk)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -144,14 +154,14 @@ def main():
             sys.exit(1)
     else:
         peaks_path = resolve_loci_path(
-            REPO_ROOT, args.pseudobulk, None, dataset=dataset
+            REPO_ROOT, args.pseudobulk, None, dataset=args.dataset
         )
         if not Path(peaks_path).exists():
             print(f"Error: peaks not found: {peaks_path}", file=sys.stderr)
             sys.exit(1)
 
     # Resolve model directory and verify that all models exist
-    model_dir = dataset.model_dir(args.pseudobulk) / model_subdir
+    model_dir = dataset_model_dir(REPO_ROOT, args.dataset, args.pseudobulk) / model_subdir
     model_paths = [
         model_dir / f"{args.pseudobulk}_f{fold}.{args.model_type}.torch"
         for fold in range(n_folds)
@@ -162,7 +172,7 @@ def main():
             sys.exit(1)
     adapter_paths = [
         REPO_ROOT
-        / dataset.model_dir(args.pseudobulk).relative_to(REPO_ROOT)
+        / dataset_model_dir(REPO_ROOT, args.dataset, args.pseudobulk).relative_to(REPO_ROOT)
         / "adapters"
         / adapter_id
         / f"{args.pseudobulk}_f{fold}.adapter.pt"
@@ -235,10 +245,10 @@ def main():
 
     # Output directory
     if adapter_id is not None:
-        out_subdir = dataset.output_subdir(f"chrombpnet_adapter_{adapter_id}")
+        out_subdir = output_subdir(args.dataset, f"chrombpnet_adapter_{adapter_id}")
     else:
         base_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
-        out_subdir = dataset.output_subdir(base_subdir)
+        out_subdir = output_subdir(args.dataset, base_subdir)
     out_dir = REPO_ROOT / "attributions" / out_subdir
     out_dir.mkdir(parents=True, exist_ok=True)
 
