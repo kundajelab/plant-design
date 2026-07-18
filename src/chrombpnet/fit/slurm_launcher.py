@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import re
 import shlex
 import subprocess
 import sys
@@ -78,15 +77,12 @@ def add_common_args(
     )
 
 
-def pseudobulk_file(dataset: str) -> Path:
-    suffix = "" if dataset == "base" else f"_{dataset}"
-    return REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
-
-
 def read_pseudobulks(dataset: str) -> list[str]:
+    suffix = "" if dataset == "base" else f"_{dataset}"
+    path = REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
     return [
         line.strip()
-        for line in pseudobulk_file(dataset).read_text().splitlines()
+        for line in path.read_text().splitlines()
         if line.strip() and not line.startswith("#")
     ]
 
@@ -101,53 +97,12 @@ def validate_pseudobulk(dataset: str, pseudobulk: str) -> None:
         )
 
 
-def data_dir(dataset: str, name: str) -> Path:
-    suffix = "" if dataset == "base" else f"_{dataset}"
-    return REPO_ROOT / "data" / f"{name}{suffix}"
-
-
-def bigwig_path(dataset: str, pseudobulk: str) -> Path:
-    return data_dir(dataset, "bigwigs") / f"{pseudobulk}.bw"
-
-
-def peaks_path(dataset: str, pseudobulk: str, *, acgt: bool = False) -> Path:
-    suffix = "_peaks_ACGT.narrowPeak" if acgt else "_peaks.narrowPeak"
-    return data_dir(dataset, "peaks") / f"{pseudobulk}{suffix}"
-
-
-def nonpeaks_path(dataset: str, pseudobulk: str, fold: int) -> Path:
-    return data_dir(dataset, "nonpeaks") / f"{pseudobulk}_fold_{fold}_negatives.bed"
-
-
-def model_dir(dataset: str, pseudobulk: str) -> Path:
-    root = REPO_ROOT / "models"
-    if dataset != "base":
-        root = root / dataset
-    return root / pseudobulk
-
-
-def output_subdir(dataset: str, base: str) -> str:
-    return base if dataset == "base" else f"{base}_{dataset}"
-
-
-def output_path(dataset: str, root: Path, base: str | Path) -> Path:
-    return root / output_subdir(dataset, str(base))
-
-
 def resolve_dataset_and_jobs(args: argparse.Namespace):
     pseudobulks = args.pseudobulks or read_pseudobulks(args.dataset)
     folds = args.folds or list(range(5))
     for pseudobulk in pseudobulks:
         validate_pseudobulk(args.dataset, pseudobulk)
     return pseudobulks, folds
-
-
-def sanitize_job_name(name: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_]", "_", name.replace(".", "p"))
-
-
-def quote_cmd(parts: list[str | Path]) -> str:
-    return " ".join(shlex.quote(str(part)) for part in parts)
 
 
 def wrap_command(parts: list[str | Path]) -> str:
@@ -215,7 +170,7 @@ def submit_jobs(
     submitted = 0
     for job_name, command in jobs:
         if args.interactive:
-            print(quote_cmd(command))
+            print(" ".join(shlex.quote(str(part)) for part in command))
             submitted += 1
             continue
 

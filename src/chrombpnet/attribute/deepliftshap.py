@@ -24,7 +24,6 @@ from da_peaks import (
     DA_PEAK_CHOICES,
     da_suffix,
     model_dir as dataset_model_dir,
-    output_subdir,
     resolve_loci_path,
     validate_pseudobulk,
 )
@@ -245,10 +244,10 @@ def main():
 
     # Output directory
     if adapter_id is not None:
-        out_subdir = output_subdir(args.dataset, f"chrombpnet_adapter_{adapter_id}")
+        base_subdir = f"chrombpnet_adapter_{adapter_id}"
     else:
         base_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
-        out_subdir = output_subdir(args.dataset, base_subdir)
+    out_subdir = base_subdir if args.dataset == "base" else f"{base_subdir}_{args.dataset}"
     out_dir = REPO_ROOT / "attributions" / out_subdir
     out_dir.mkdir(parents=True, exist_ok=True)
 

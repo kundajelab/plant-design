@@ -16,7 +16,6 @@ from da_peaks import (
     DATASETS,
     DA_PEAK_CHOICES,
     da_suffix,
-    output_subdir,
     resolve_loci_path,
     resolve_ohe_path,
     validate_pseudobulk,
@@ -101,7 +100,8 @@ def main():
     )
 
     # Output directory
-    out_dir = REPO_ROOT / "attributions" / output_subdir(args.dataset, "chrombpnet")
+    out_subdir = "chrombpnet" if args.dataset == "base" else f"chrombpnet_{args.dataset}"
+    out_dir = REPO_ROOT / "attributions" / out_subdir
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Save OHE

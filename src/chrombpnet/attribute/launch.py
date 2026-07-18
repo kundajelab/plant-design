@@ -33,7 +33,6 @@ from da_peaks import (
     DA_PEAK_CHOICES,
     da_suffix,
     model_dir as dataset_model_dir,
-    output_subdir,
     read_pseudobulks,
     resolve_loci_path,
 )
@@ -121,10 +120,10 @@ def main():
     )
 
     if adapter_id is not None:
-        out_subdir = output_subdir(args.dataset, f"chrombpnet_adapter_{adapter_id}")
+        base_subdir = f"chrombpnet_adapter_{adapter_id}"
     else:
         base_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
-        out_subdir = output_subdir(args.dataset, base_subdir)
+    out_subdir = base_subdir if args.dataset == "base" else f"{base_subdir}_{args.dataset}"
 
     if args.da_peaks is not None and args.dataset != "base":
         print(

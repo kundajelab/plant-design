@@ -58,10 +58,6 @@ def discover_sweep_ids():
     return sorted(sweep_ids)
 
 
-def quote_cmd(parts):
-    return " ".join(shlex.quote(str(part)) for part in parts)
-
-
 def slurm_job_name(prefix, name, max_len=120):
     raw = f"{prefix}_{name}"
     if len(raw) <= max_len:
@@ -104,7 +100,7 @@ def reference_job(args, model_id, spec):
             cmd.append("--save-output")
         if args.verbose:
             cmd.append("-v")
-        cross.append(quote_cmd(cmd))
+        cross.append(" ".join(shlex.quote(str(part)) for part in cmd))
 
     da_path = spec["da_path"]
     da_done = da_path.exists() and (
@@ -122,14 +118,15 @@ def reference_job(args, model_id, spec):
             cmd.append("--save-output")
         if args.verbose:
             cmd.append("-v")
-        serial.append(quote_cmd(cmd))
+        serial.append(" ".join(shlex.quote(str(part)) for part in cmd))
     else:
         skipped += 1
 
     if not spec["pairwise_path"].exists() or args.rerun:
         serial.append(
-            quote_cmd(
-                [
+            " ".join(
+                shlex.quote(str(part))
+                for part in [
                     "python",
                     BENCHMARK_DIR / "pairwise_correlations_predicted.py",
                     *spec["flags"],
@@ -171,7 +168,7 @@ def adapter_job(args, sweep_id):
             cmd.append("--save-output")
         if args.verbose:
             cmd.append("-v")
-        cross.append(quote_cmd(cmd))
+        cross.append(" ".join(shlex.quote(str(part)) for part in cmd))
 
     da_json = (
         REPO_ROOT
@@ -199,7 +196,7 @@ def adapter_job(args, sweep_id):
             cmd.append("--save-output")
         if args.verbose:
             cmd.append("-v")
-        serial.append(quote_cmd(cmd))
+        serial.append(" ".join(shlex.quote(str(part)) for part in cmd))
     else:
         skipped += 1
 
@@ -212,8 +209,9 @@ def adapter_job(args, sweep_id):
     )
     if not pairwise_json.exists() or args.rerun:
         serial.append(
-            quote_cmd(
-                [
+            " ".join(
+                shlex.quote(str(part))
+                for part in [
                     "python",
                     BENCHMARK_DIR / "pairwise_correlations_predicted.py",
                     "--adapter-sweep-id",

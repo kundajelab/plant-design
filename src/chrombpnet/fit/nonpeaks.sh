@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Create nonpeaks for each pseudobulk and fold
+# Print one nonpeak-generation command per pseudobulk and fold.
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../../.." && pwd)"
@@ -9,17 +9,17 @@ repo_root="$(cd "${script_dir}/../../.." && pwd)"
 dataset="${DATASET:-base}"
 case "${dataset}" in
     base)
-        pseudobulks=("bundle_sheath" "epidermis" "guard" "mesophyll" "phloem" "xylem")
+        pseudobulks_file="${repo_root}/configs/pseudobulks.txt"
         peaks_dir="${repo_root}/data/peaks"
         nonpeaks_dir="${repo_root}/data/nonpeaks"
         ;;
     fine)
-        pseudobulks=("epidermis_I" "epidermis_II" "mesophyll_etiolated" "mesophyll_photosynthetic" "meristem_epidermis" "bundle_sheath" "silica_cell" "sclerenchyma" "meristem" "phloem_companion_cell" "xylem" "phloem_parenchyma" "meristem_bundle_sheath" "subsidiary_cell" "guard_cell" "trichome" "ligule")
+        pseudobulks_file="${repo_root}/configs/pseudobulks_fine.txt"
         peaks_dir="${repo_root}/data/peaks_fine"
         nonpeaks_dir="${repo_root}/data/nonpeaks_fine"
         ;;
     coarse)
-        pseudobulks=("bundle_sheath" "Epidermis_I" "Epidermis_II" "meristem" "mesophyll" "phloem" "sclerenchyma" "xylem")
+        pseudobulks_file="${repo_root}/configs/pseudobulks_coarse.txt"
         peaks_dir="${repo_root}/data/peaks_coarse"
         nonpeaks_dir="${repo_root}/data/nonpeaks_coarse"
         ;;
@@ -29,14 +29,17 @@ case "${dataset}" in
         ;;
 esac
 
-mkdir -p "${nonpeaks_dir}"
-for pseudobulk in "${pseudobulks[@]}"; do
+while IFS= read -r pseudobulk || [[ -n "${pseudobulk}" ]]; do
+    [[ -z "${pseudobulk}" || "${pseudobulk}" == \#* ]] && continue
     for i in {0..4}; do
-        chrombpnet prep nonpeaks \
+        printf "mkdir -p %q && " "${nonpeaks_dir}"
+        printf "%q " \
+            chrombpnet prep nonpeaks \
             -g "${repo_root}/data/Sbicolor_730_v5.0.fa" \
             -o "${nonpeaks_dir}/${pseudobulk}_fold_${i}" \
             -p "${peaks_dir}/${pseudobulk}_peaks.narrowPeak" \
             -c "${repo_root}/data/Sbicolor_730_v5.0.chrom.sizes" \
             -fl "${repo_root}/configs/fold_${i}.json"
+        printf "\n"
     done
-done
+done < "${pseudobulks_file}"

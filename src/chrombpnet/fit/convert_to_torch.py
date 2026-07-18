@@ -16,24 +16,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DATASETS = ("base", "fine", "coarse")
 
 
-def pseudobulk_file(dataset):
-    suffix = "" if dataset == "base" else f"_{dataset}"
-    return REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
-
-
 def read_pseudobulks(dataset):
+    suffix = "" if dataset == "base" else f"_{dataset}"
+    path = REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
     return [
         line.strip()
-        for line in pseudobulk_file(dataset).read_text().splitlines()
+        for line in path.read_text().splitlines()
         if line.strip() and not line.startswith("#")
     ]
-
-
-def model_dir(dataset, pseudobulk):
-    root = REPO_ROOT / "models"
-    if dataset != "base":
-        root = root / dataset
-    return root / pseudobulk
 
 
 def parse_args():
@@ -80,11 +70,14 @@ def main():
 
     pseudobulks = args.pseudobulks or read_pseudobulks(args.dataset)
     folds = args.folds or list(range(5))
+    model_root = REPO_ROOT / "models"
+    if args.dataset != "base":
+        model_root = model_root / args.dataset
 
     for pseudobulk in pseudobulks:
         if pseudobulk not in read_pseudobulks(args.dataset):
             raise SystemExit(f"Unknown pseudobulk '{pseudobulk}' for dataset '{args.dataset}'")
-        out_dir = model_dir(args.dataset, pseudobulk) / "torch"
+        out_dir = model_root / pseudobulk / "torch"
         out_dir.mkdir(exist_ok=True, parents=True)
         print(f"\nConverting {args.dataset}/{pseudobulk} -> {out_dir}")
 
@@ -97,7 +90,7 @@ def main():
             if not args.overwrite and all(path.exists() for path in out_paths):
                 continue
 
-            tf_model_dir = model_dir(args.dataset, pseudobulk) / f"acc_f{fold}" / "models"
+            tf_model_dir = model_root / pseudobulk / f"acc_f{fold}" / "models"
             bias_path = tf_model_dir / "bias_model_scaled.h5"
             accessibility_path = tf_model_dir / "chrombpnet_nobias.h5"
             missing = [path for path in [bias_path, accessibility_path] if not path.exists()]

@@ -31,34 +31,14 @@ FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
 DATASETS = ("base", "fine", "coarse")
 
 
-def pseudobulk_file(dataset):
-    suffix = "" if dataset == "base" else f"_{dataset}"
-    return REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
-
-
 def read_pseudobulks(dataset):
+    suffix = "" if dataset == "base" else f"_{dataset}"
+    path = REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
     return [
         line.strip()
-        for line in pseudobulk_file(dataset).read_text().splitlines()
+        for line in path.read_text().splitlines()
         if line.strip() and not line.startswith("#")
     ]
-
-
-def data_dir(dataset, name):
-    suffix = "" if dataset == "base" else f"_{dataset}"
-    return REPO_ROOT / "data" / f"{name}{suffix}"
-
-
-def model_dir(dataset, pseudobulk):
-    root = REPO_ROOT / "models"
-    if dataset != "base":
-        root = root / dataset
-    return root / pseudobulk
-
-
-def output_path(dataset, root, subdir):
-    suffix = "" if dataset == "base" else f"_{dataset}"
-    return root / f"{subdir}{suffix}"
 
 
 def main():
@@ -106,6 +86,10 @@ def main():
     adapter_id = variant["adapter_id"]
     metrics_subdir = variant["metrics_subdir"]
     predictions_subdir = variant["predictions_subdir"]
+    dataset_suffix = "" if args.dataset == "base" else f"_{args.dataset}"
+    model_root = REPO_ROOT / "models"
+    if args.dataset != "base":
+        model_root = model_root / args.dataset
 
     # Load chrom splits
     with open(CHROM_SPLITS_PATH, "r") as f:
@@ -113,8 +97,15 @@ def main():
     n_folds = len(chrom_splits)
 
     # Construct data paths and verify that they exist.
-    peaks_path = str(data_dir(args.dataset, "peaks") / f"{args.pseudobulk}_peaks.narrowPeak")
-    bw_path = str(data_dir(args.dataset, "bigwigs") / f"{args.pseudobulk}.bw")
+    peaks_path = str(
+        REPO_ROOT
+        / "data"
+        / f"peaks{dataset_suffix}"
+        / f"{args.pseudobulk}_peaks.narrowPeak"
+    )
+    bw_path = str(
+        REPO_ROOT / "data" / f"bigwigs{dataset_suffix}" / f"{args.pseudobulk}.bw"
+    )
     for path, label in [(peaks_path, "peaks"), (bw_path, "bigwig")]:
         if not Path(path).exists():
             print(f"Error: {label} not found: {path}", file=sys.stderr)
@@ -122,14 +113,13 @@ def main():
 
     # Construct model paths and verify that they exist.
     model_paths = [
-        model_dir(args.dataset, args.pseudobulk)
-        / model_subdir
-        / f"{args.pseudobulk}_f{fold}.torch"
+        model_root / args.pseudobulk / model_subdir / f"{args.pseudobulk}_f{fold}.torch"
         for fold in range(n_folds)
     ]
     adapter_paths = (
         [
-            model_dir(args.dataset, args.pseudobulk)
+            model_root
+            / args.pseudobulk
             / "adapters"
             / adapter_id
             / f"{args.pseudobulk}_f{fold}.adapter.pt"
@@ -268,7 +258,11 @@ def main():
             "counts_spearman": counts_spearman_all,
         },
     }
-    metrics_dir = output_path(args.dataset, REPO_ROOT / "performance_metrics", metrics_subdir)
+    metrics_dir = (
+        REPO_ROOT
+        / "performance_metrics"
+        / (metrics_subdir if args.dataset == "base" else f"{metrics_subdir}_{args.dataset}")
+    )
     metrics_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = metrics_dir / f"{args.pseudobulk}.json"
     with open(metrics_path, "w") as f:
@@ -276,7 +270,15 @@ def main():
     print(f"\nMetrics saved to {metrics_path}")
 
     if args.save_output:
-        output_dir = output_path(args.dataset, REPO_ROOT / "predictions", predictions_subdir)
+        output_dir = (
+            REPO_ROOT
+            / "predictions"
+            / (
+                predictions_subdir
+                if args.dataset == "base"
+                else f"{predictions_subdir}_{args.dataset}"
+            )
+        )
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / f"{args.pseudobulk}.npz"
         scaled_preds = {

@@ -100,10 +100,6 @@ VARIANTS = {
 }
 
 
-def quote_cmd(parts):
-    return " ".join(shlex.quote(str(part)) for part in parts)
-
-
 def slurm_name(text):
     return (
         text.replace("/", "_")
@@ -113,27 +109,28 @@ def slurm_name(text):
     )
 
 
-def pseudobulk_file(dataset):
-    suffix = "" if dataset == "base" else f"_{dataset}"
-    return REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
-
-
 def read_pseudobulks(dataset):
+    suffix = "" if dataset == "base" else f"_{dataset}"
+    path = REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
     return [
         line.strip()
-        for line in pseudobulk_file(dataset).read_text().splitlines()
+        for line in path.read_text().splitlines()
         if line.strip() and not line.startswith("#")
     ]
 
 
-def output_path(dataset, root, subdir):
-    suffix = "" if dataset == "base" else f"_{dataset}"
-    return root / f"{subdir}{suffix}"
-
-
 def existing_cross_path(dataset_name, variant, pseudobulk):
     metrics_subdir = variant.cross_dir.relative_to(REPO_ROOT / "performance_metrics")
-    path = output_path(dataset_name, REPO_ROOT / "performance_metrics", metrics_subdir) / f"{pseudobulk}.json"
+    path = (
+        REPO_ROOT
+        / "performance_metrics"
+        / (
+            metrics_subdir
+            if dataset_name == "base"
+            else f"{metrics_subdir}_{dataset_name}"
+        )
+        / f"{pseudobulk}.json"
+    )
     return path if path.exists() else None
 
 
@@ -167,7 +164,7 @@ def build_variant_job(args, variant):
             cmd.append("--save-output")
         if args.verbose:
             cmd.append("-v")
-        cross.append(quote_cmd(cmd))
+        cross.append(" ".join(shlex.quote(str(part)) for part in cmd))
 
     if args.dataset != "base":
         return {
@@ -192,14 +189,15 @@ def build_variant_job(args, variant):
             cmd.append("--save-output")
         if args.verbose:
             cmd.append("-v")
-        serial.append(quote_cmd(cmd))
+        serial.append(" ".join(shlex.quote(str(part)) for part in cmd))
     else:
         skipped += 1
 
     if not variant.pairwise_path.exists() or args.rerun:
         serial.append(
-            quote_cmd(
-                [
+            " ".join(
+                shlex.quote(str(part))
+                for part in [
                     "python",
                     BENCHMARK_DIR / "pairwise_correlations_predicted.py",
                     *variant.flags,
