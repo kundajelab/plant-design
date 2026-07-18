@@ -1,0 +1,17 @@
+epidermis_I
+epidermis_II
+mesophyll_etiolated
+mesophyll_photosynthetic
+meristem_epidermis
+bundle_sheath
+silica_cell
+sclerenchyma
+meristem
+phloem_companion_cell
+xylem
+phloem_parenchyma
+meristem_bundle_sheath
+subsidiary_cell
+guard_cell
+trichome
+ligule

@@ -16,6 +16,10 @@ from da_peaks import DA_PEAK_CHOICES, da_suffix, resolve_loci_path, resolve_ohe_
 from tangermeme.io import extract_loci
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from chrombpnet.datasets import add_dataset_arg, get_dataset  # noqa: E402
+
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
 
@@ -29,9 +33,9 @@ def main():
         "--pseudobulk",
         type=str,
         required=True,
-        choices=["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"],
         help="The name of the pseudobulk to save OHE for.",
     )
+    add_dataset_arg(parser)
     parser.add_argument(
         "--da-peaks",
         type=str,
@@ -41,13 +45,27 @@ def main():
     )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
+    dataset = get_dataset(REPO_ROOT, args.dataset)
+    try:
+        dataset.validate_pseudobulk(args.pseudobulk)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    if args.da_peaks is not None and args.dataset != "base":
+        print(
+            "Error: --da-peaks is currently only defined for --dataset base.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     # Chromosome splits: fold i = test, fold (i+1)%n = validation, rest = train
     with open(CHROM_SPLITS_PATH, "r") as f:
         chrom_splits = json.load(f)
 
     # Construct data paths and verify that they exist.
-    peaks_path = resolve_loci_path(REPO_ROOT, args.pseudobulk, args.da_peaks)
+    peaks_path = resolve_loci_path(
+        REPO_ROOT, args.pseudobulk, args.da_peaks, dataset=dataset
+    )
     for path, label in [(peaks_path, "peaks")]:
         if not Path(path).exists():
             print(f"Error: {label} not found: {path}", file=sys.stderr)
@@ -75,11 +93,13 @@ def main():
     )
 
     # Output directory
-    out_dir = REPO_ROOT / "attributions" / "chrombpnet"
+    out_dir = REPO_ROOT / "attributions" / dataset.output_subdir("chrombpnet")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Save OHE
-    ohe_path = resolve_ohe_path(REPO_ROOT, args.pseudobulk, args.da_peaks)
+    ohe_path = resolve_ohe_path(
+        REPO_ROOT, args.pseudobulk, args.da_peaks, dataset=dataset
+    )
     np.savez_compressed(ohe_path, X)
     print(f"\nOne-hot-encoded sequences{da_suffix(args.da_peaks)} saved to {ohe_path}")
 

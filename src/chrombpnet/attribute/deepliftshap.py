@@ -25,6 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "src" / "chrombpnet" / "benchmark"))
 
+from chrombpnet.datasets import add_dataset_arg, get_dataset  # noqa: E402
 from daicon import (  # noqa: E402
     iter_adapters,
     load_accessibility_with_adapter,
@@ -56,9 +57,9 @@ def main():
         "--pseudobulk",
         type=str,
         required=True,
-        choices=["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"],
         help="The name of the pseudobulk to benchmark",
     )
+    add_dataset_arg(parser)
     parser.add_argument(
         "-m",
         "--model-type",
@@ -95,6 +96,12 @@ def main():
     )
     args = parser.parse_args()
     variant = resolve_model_variant(args)
+    dataset = get_dataset(REPO_ROOT, args.dataset)
+    try:
+        dataset.validate_pseudobulk(args.pseudobulk)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
     fine_tag = variant["fine_tag"]
     model_subdir = variant["model_subdir"]
     adapter_id = variant["adapter_id"]
@@ -110,6 +117,12 @@ def main():
         print(
             "Error: adapters are only defined for the accessibility model. "
             "Use --model-type accessibility with --adapter or --adapter-run-id.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if args.da_peaks is not None and args.dataset != "base":
+        print(
+            "Error: --da-peaks is currently only defined for --dataset base.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -130,13 +143,15 @@ def main():
             )
             sys.exit(1)
     else:
-        peaks_path = resolve_loci_path(REPO_ROOT, args.pseudobulk, None)
+        peaks_path = resolve_loci_path(
+            REPO_ROOT, args.pseudobulk, None, dataset=dataset
+        )
         if not Path(peaks_path).exists():
             print(f"Error: peaks not found: {peaks_path}", file=sys.stderr)
             sys.exit(1)
 
     # Resolve model directory and verify that all models exist
-    model_dir = REPO_ROOT / "models" / args.pseudobulk / model_subdir
+    model_dir = dataset.model_dir(args.pseudobulk) / model_subdir
     model_paths = [
         model_dir / f"{args.pseudobulk}_f{fold}.{args.model_type}.torch"
         for fold in range(n_folds)
@@ -147,8 +162,7 @@ def main():
             sys.exit(1)
     adapter_paths = [
         REPO_ROOT
-        / "models"
-        / args.pseudobulk
+        / dataset.model_dir(args.pseudobulk).relative_to(REPO_ROOT)
         / "adapters"
         / adapter_id
         / f"{args.pseudobulk}_f{fold}.adapter.pt"
@@ -221,9 +235,10 @@ def main():
 
     # Output directory
     if adapter_id is not None:
-        out_subdir = f"chrombpnet_adapter_{adapter_id}"
+        out_subdir = dataset.output_subdir(f"chrombpnet_adapter_{adapter_id}")
     else:
-        out_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
+        base_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
+        out_subdir = dataset.output_subdir(base_subdir)
     out_dir = REPO_ROOT / "attributions" / out_subdir
     out_dir.mkdir(parents=True, exist_ok=True)
 

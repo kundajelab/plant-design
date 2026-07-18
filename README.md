@@ -47,6 +47,8 @@ Convert ATAC fragment files to per-pseudobulk bigwigs:
 
 ```bash
 bash src/data_preprocessing/make_bigwigs.sh
+bash src/data_preprocessing/make_bigwigs_fine.sh
+bash src/data_preprocessing/make_bigwigs_coarse.sh
 ```
 
 Expected data layout under `data/`:
@@ -54,8 +56,17 @@ Expected data layout under `data/`:
 data/
 ├── Sbicolor_730_v5.0.fa          # Sorghum v5 reference genome
 ├── peaks/<pseudobulk>_peaks.narrowPeak
-└── bigwigs/<pseudobulk>.bw
+├── peaks_fine/<pseudobulk>_peaks.narrowPeak
+├── peaks_coarse/<pseudobulk>_peaks.narrowPeak
+├── bigwigs/<pseudobulk>.bw
+├── bigwigs_fine/<pseudobulk>.bw
+└── bigwigs_coarse/<pseudobulk>.bw
 ```
+
+The base dataset is the default for training and analysis scripts. Use
+`DATASET=fine` or `DATASET=coarse` with shell launchers, and `--dataset fine` or
+`--dataset coarse` with Python entrypoints such as `convert_to_torch.py`,
+`benchmark.py`, and DeepLIFT/SHAP scripts.
 
 ### 2. Generate non-peak background regions
 

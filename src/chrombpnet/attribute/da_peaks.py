@@ -25,18 +25,23 @@ def resolve_da_bed(repo_root, da_peaks, pseudobulk):
     raise ValueError(f"unknown DA peak set: {da_peaks}")
 
 
-def resolve_loci_path(repo_root, pseudobulk, da_peaks=None):
+def resolve_loci_path(repo_root, pseudobulk, da_peaks=None, dataset=None):
     """Resolve all-peaks or DA-peaks loci path for a pseudobulk."""
+    if dataset is not None and da_peaks is None:
+        return dataset.peaks_path(pseudobulk, acgt=True)
     if da_peaks is None:
         return Path(repo_root) / "data" / "peaks" / f"{pseudobulk}_peaks_ACGT.narrowPeak"
     return resolve_da_bed(repo_root, da_peaks, pseudobulk)
 
 
-def resolve_ohe_path(repo_root, pseudobulk, da_peaks=None):
+def resolve_ohe_path(repo_root, pseudobulk, da_peaks=None, dataset=None):
     """Resolve the OHE npz path matching a pseudobulk and optional DA peak set."""
+    subdir = "chrombpnet"
+    if dataset is not None:
+        subdir = dataset.output_subdir(subdir)
     return (
         Path(repo_root)
         / "attributions"
-        / "chrombpnet"
+        / subdir
         / f"{pseudobulk}_ohe{da_suffix(da_peaks)}.npz"
     )

@@ -1,32 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
 export NUMBA_NUM_THREADS=4
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/miniforge3/envs/chrombpnet/lib
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}:~/miniforge3/envs/chrombpnet/lib"
 mamba activate chrombpnet
 
-for pseudobulk in "bundle_sheath" "epidermis" "guard" "mesophyll" "phloem" "xylem"; do
+dataset="${DATASET:-base}"
+case "${dataset}" in
+    base)
+        pseudobulks=("bundle_sheath" "epidermis" "guard" "mesophyll" "phloem" "xylem")
+        bigwig_dir="../../../data/bigwigs"
+        peaks_dir="../../../data/peaks"
+        nonpeaks_dir="../../../data/nonpeaks"
+        model_root="../../../models"
+        ;;
+    fine)
+        pseudobulks=("epidermis_I" "epidermis_II" "mesophyll_etiolated" "mesophyll_photosynthetic" "meristem_epidermis" "bundle_sheath" "silica_cell" "sclerenchyma" "meristem" "phloem_companion_cell" "xylem" "phloem_parenchyma" "meristem_bundle_sheath" "subsidiary_cell" "guard_cell" "trichome" "ligule")
+        bigwig_dir="../../../data/bigwigs_fine"
+        peaks_dir="../../../data/peaks_fine"
+        nonpeaks_dir="../../../data/nonpeaks_fine"
+        model_root="../../../models/fine"
+        ;;
+    coarse)
+        pseudobulks=("bundle_sheath" "Epidermis_I" "Epidermis_II" "meristem" "mesophyll" "phloem" "sclerenchyma" "xylem")
+        bigwig_dir="../../../data/bigwigs_coarse"
+        peaks_dir="../../../data/peaks_coarse"
+        nonpeaks_dir="../../../data/nonpeaks_coarse"
+        model_root="../../../models/coarse"
+        ;;
+    *)
+        echo "Unknown DATASET='${dataset}' (expected base, fine, or coarse)" >&2
+        exit 1
+        ;;
+esac
+
+for pseudobulk in "${pseudobulks[@]}"; do
     for i in {0..4}; do
     echo time python cli.py train \
-        -bw ../../../data/bigwigs/${pseudobulk}.bw \
+        -bw ${bigwig_dir}/${pseudobulk}.bw \
         -d "ATAC" \
         -g ../../../data/Sbicolor_730_v5.0.fa \
         -c ../../../data/Sbicolor_730_v5.0.chrom.sizes \
-        -p ../../../data/peaks/${pseudobulk}_peaks.narrowPeak \
-        -n ../../../data/nonpeaks/${pseudobulk}_fold_${i}_negatives.bed \
+        -p ${peaks_dir}/${pseudobulk}_peaks.narrowPeak \
+        -n ${nonpeaks_dir}/${pseudobulk}_fold_${i}_negatives.bed \
         -fl ../../../configs/fold_${i}.json \
-        -b ../../../models/${pseudobulk}/bias_f${i}/models/f${i}_bias.h5 \
-        -o ../../../models/${pseudobulk}/acc_f${i}/
+        -b ${model_root}/${pseudobulk}/bias_f${i}/models/f${i}_bias.h5 \
+        -o ${model_root}/${pseudobulk}/acc_f${i}/
     done
 done | simple_gpu_scheduler --gpus 0 1 2 3
-
-cd /srv/scratch/ayhe/plant-design/src/chrombpnet/fit/
-pseudobulk="xylem"
-i=4
-time python cli.py train \
-    -bw ../../../data/bigwigs/${pseudobulk}.bw \
-    -d "ATAC" \
-    -g ../../../data/Sbicolor_730_v5.0.fa \
-    -c ../../../data/Sbicolor_730_v5.0.chrom.sizes \
-    -p ../../../data/peaks/${pseudobulk}_peaks.narrowPeak \
-    -n ../../../data/nonpeaks/${pseudobulk}_fold_${i}_negatives.bed \
-    -fl ../../../configs/fold_${i}.json \
-    -b ../../../models/${pseudobulk}/bias_f${i}/models/f${i}_bias.h5 \
-    -o ../../../models/${pseudobulk}/acc_f${i}/

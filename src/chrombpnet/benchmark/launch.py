@@ -19,8 +19,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from chrombpnet.datasets import add_dataset_arg, get_dataset  # noqa: E402
+
 BENCHMARK_DIR = REPO_ROOT / "src" / "chrombpnet" / "benchmark"
-PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
 
 
 @dataclass(frozen=True)
@@ -113,8 +116,9 @@ def slurm_name(text):
     )
 
 
-def existing_cross_path(variant, pseudobulk):
-    path = variant.cross_dir / f"{pseudobulk}.json"
+def existing_cross_path(dataset, variant, pseudobulk):
+    metrics_subdir = variant.cross_dir.relative_to(REPO_ROOT / "performance_metrics")
+    path = dataset.output_path(REPO_ROOT / "performance_metrics", metrics_subdir) / f"{pseudobulk}.json"
     return path if path.exists() else None
 
 
@@ -124,18 +128,20 @@ def benchmark_da_peaks_path(da_path):
     )
 
 
-def build_variant_job(args, variant):
+def build_variant_job(args, dataset, variant):
     cross = []
     serial = []
     skipped = 0
 
     for pseudobulk in args.pseudobulks:
-        if existing_cross_path(variant, pseudobulk) is not None and not args.rerun:
+        if existing_cross_path(dataset, variant, pseudobulk) is not None and not args.rerun:
             skipped += 1
             continue
         cmd = [
             "python",
             BENCHMARK_DIR / "benchmark.py",
+            "--dataset",
+            args.dataset,
             "-p",
             pseudobulk,
             "-b",
@@ -147,6 +153,14 @@ def build_variant_job(args, variant):
         if args.verbose:
             cmd.append("-v")
         cross.append(quote_cmd(cmd))
+
+    if args.dataset != "base":
+        return {
+            "job_name": slurm_name(f"benchmark_{args.dataset}_{variant.name}"),
+            "cross": cross,
+            "serial": serial,
+            "skipped": skipped,
+        }
 
     da_done = variant.da_path.exists() and (
         not args.save_da_outputs or benchmark_da_peaks_path(variant.da_path).exists()
@@ -181,7 +195,7 @@ def build_variant_job(args, variant):
         skipped += 1
 
     return {
-        "job_name": slurm_name(f"benchmark_{variant.name}"),
+        "job_name": slurm_name(f"benchmark_{args.dataset}_{variant.name}"),
         "cross": cross,
         "serial": serial,
         "skipped": skipped,
@@ -271,9 +285,9 @@ def main():
         "--pseudobulk",
         dest="pseudobulks",
         action="append",
-        choices=PSEUDOBULKS,
         default=None,
     )
+    add_dataset_arg(parser)
     parser.add_argument("--rerun", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
@@ -299,9 +313,16 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
-    args.pseudobulks = args.pseudobulks or PSEUDOBULKS
-    variant_names = args.variant or list(VARIANTS)
-    jobs = [build_variant_job(args, VARIANTS[name]) for name in variant_names]
+    dataset = get_dataset(REPO_ROOT, args.dataset)
+    args.pseudobulks = args.pseudobulks or dataset.pseudobulks()
+    for pseudobulk in args.pseudobulks:
+        try:
+            dataset.validate_pseudobulk(pseudobulk)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
+    variant_names = args.variant or (["base"] if args.dataset != "base" else list(VARIANTS))
+    jobs = [build_variant_job(args, dataset, VARIANTS[name]) for name in variant_names]
     submit_jobs(args, jobs)
 
 

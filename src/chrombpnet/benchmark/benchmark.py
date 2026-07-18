@@ -23,6 +23,7 @@ from tangermeme.predict import predict
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
+from chrombpnet.datasets import add_dataset_arg, get_dataset  # noqa: E402
 from daicon import load_model_with_adapter  # noqa: E402
 from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
 
@@ -39,9 +40,9 @@ def main():
         "--pseudobulk",
         type=str,
         required=True,
-        choices=["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"],
         help="The name of the pseudobulk to benchmark",
     )
+    add_dataset_arg(parser)
     parser.add_argument(
         "-o",
         "--save-output",
@@ -58,6 +59,12 @@ def main():
     args = parser.parse_args()
 
     variant = resolve_model_variant(args)
+    dataset = get_dataset(REPO_ROOT, args.dataset)
+    try:
+        dataset.validate_pseudobulk(args.pseudobulk)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
     model_subdir = variant["model_subdir"]
     adapter_id = variant["adapter_id"]
     metrics_subdir = variant["metrics_subdir"]
@@ -69,8 +76,8 @@ def main():
     n_folds = len(chrom_splits)
 
     # Construct data paths and verify that they exist.
-    peaks_path = str(REPO_ROOT / f"data/peaks/{args.pseudobulk}_peaks.narrowPeak")
-    bw_path = str(REPO_ROOT / f"data/bigwigs/{args.pseudobulk}.bw")
+    peaks_path = str(dataset.peaks_path(args.pseudobulk))
+    bw_path = str(dataset.bigwig_path(args.pseudobulk))
     for path, label in [(peaks_path, "peaks"), (bw_path, "bigwig")]:
         if not Path(path).exists():
             print(f"Error: {label} not found: {path}", file=sys.stderr)
@@ -79,8 +86,7 @@ def main():
     # Construct model paths and verify that they exist.
     model_paths = [
         REPO_ROOT
-        / "models"
-        / args.pseudobulk
+        / dataset.model_dir(args.pseudobulk).relative_to(REPO_ROOT)
         / model_subdir
         / f"{args.pseudobulk}_f{fold}.torch"
         for fold in range(n_folds)
@@ -88,8 +94,7 @@ def main():
     adapter_paths = (
         [
             REPO_ROOT
-            / "models"
-            / args.pseudobulk
+            / dataset.model_dir(args.pseudobulk).relative_to(REPO_ROOT)
             / "adapters"
             / adapter_id
             / f"{args.pseudobulk}_f{fold}.adapter.pt"
@@ -211,6 +216,7 @@ def main():
     # Save metrics to JSON
     metrics = {
         "pseudobulk": args.pseudobulk,
+        "dataset": args.dataset,
         "per_fold": {
             str(fold): {
                 "profile_pearson": np.nanmedian(profile_corr[fold]).item(),
@@ -227,7 +233,7 @@ def main():
             "counts_spearman": counts_spearman_all,
         },
     }
-    metrics_dir = REPO_ROOT / "performance_metrics" / metrics_subdir
+    metrics_dir = dataset.output_path(REPO_ROOT / "performance_metrics", metrics_subdir)
     metrics_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = metrics_dir / f"{args.pseudobulk}.json"
     with open(metrics_path, "w") as f:
@@ -235,7 +241,7 @@ def main():
     print(f"\nMetrics saved to {metrics_path}")
 
     if args.save_output:
-        output_dir = REPO_ROOT / "predictions" / predictions_subdir
+        output_dir = dataset.output_path(REPO_ROOT / "predictions", predictions_subdir)
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / f"{args.pseudobulk}.npz"
         scaled_preds = {
