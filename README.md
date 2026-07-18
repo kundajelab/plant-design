@@ -86,6 +86,10 @@ python src/chrombpnet/fit/bias.py --dataset fine --dry-run
 python src/chrombpnet/fit/bias.py --dataset fine --interactive
 ```
 
+`--interactive` prints one local training command per selected pseudobulk/fold
+to stdout, so it can be piped to `parallel`, `simple_gpu_scheduler`, or another
+local scheduler.
+
 ### 4. Train accessibility (ChromBPNet) models
 
 ```bash

@@ -60,7 +60,7 @@ def add_common_args(
     parser.add_argument(
         "--interactive",
         action="store_true",
-        help="Run commands locally in the current environment instead of submitting SLURM jobs.",
+        help="Print one local command per job instead of submitting SLURM jobs.",
     )
     parser.add_argument("--partition", type=str, default="akundaje,gpu,owners")
     parser.add_argument(
@@ -165,12 +165,7 @@ def submit_jobs(
     submitted = 0
     for job_name, command in jobs:
         if args.interactive:
-            print(f"--- {job_name} ---")
             print(quote_cmd(command))
-            if not args.dry_run:
-                result = subprocess.run(command, cwd=SCRIPT_DIR)
-                if result.returncode != 0:
-                    raise SystemExit(result.returncode)
             submitted += 1
             continue
 
@@ -196,7 +191,7 @@ def submit_jobs(
         submitted += 1
 
     if args.interactive:
-        action = "Dry run: would run" if args.dry_run else "Ran"
+        action = "Printed"
     else:
         action = "Dry run: generated" if args.dry_run else "Submitted"
-    print(f"{action} {submitted} {label} job(s).")
+    print(f"{action} {submitted} {label} command(s).", file=sys.stderr)

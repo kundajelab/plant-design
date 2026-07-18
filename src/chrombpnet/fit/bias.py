@@ -2,6 +2,7 @@
 """Submit ChromBPNet bias-model training jobs to SLURM."""
 
 import argparse
+import sys
 from pathlib import Path
 
 from slurm_launcher import (
@@ -64,7 +65,7 @@ def main():
             jobs.append((job_name, command))
 
     submit_jobs(args=args, log_dir=log_dir, jobs=jobs, label="bias")
-    print(f"Skipped {skipped} completed bias job(s).")
+    print(f"Skipped {skipped} completed bias job(s).", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 """Submit ChromBPNet accessibility-model training jobs to SLURM."""
 
 import argparse
+import sys
 
 from slurm_launcher import (
     REPO_ROOT,
@@ -64,7 +65,7 @@ def main():
             jobs.append((job_name, command))
 
     submit_jobs(args=args, log_dir=log_dir, jobs=jobs, label="accessibility")
-    print(f"Skipped {skipped} completed accessibility job(s).")
+    print(f"Skipped {skipped} completed accessibility job(s).", file=sys.stderr)
 
 
 if __name__ == "__main__":
