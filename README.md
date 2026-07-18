@@ -65,8 +65,9 @@ data/
 ```
 
 The base dataset is the default for training and analysis scripts. Use
-`--dataset fine` or `--dataset coarse` with the training launchers and Python
-entrypoints such as `convert_to_torch.py`, `benchmark.py`, and DeepLIFT/SHAP
+`DATASET=fine` or `DATASET=coarse` with the plain shell training scripts, and
+`--dataset fine` or `--dataset coarse` with Python entrypoints such as the
+SLURM launchers, `convert_to_torch.py`, `benchmark.py`, and DeepLIFT/SHAP
 scripts.
 
 ### 2. Generate non-peak background regions
@@ -81,14 +82,14 @@ Trains Tn5 insertion bias models for all pseudobulks across all 5 folds:
 
 ```bash
 bash src/chrombpnet/fit/bias.sh
-bash src/chrombpnet/fit/bias.sh --dataset fine --dry-run
+python src/chrombpnet/fit/bias.py --dataset fine --dry-run
 ```
 
 ### 4. Train accessibility (ChromBPNet) models
 
 ```bash
 bash src/chrombpnet/fit/accessibility.sh
-bash src/chrombpnet/fit/accessibility.sh --dataset fine --dry-run
+python src/chrombpnet/fit/accessibility.py --dataset fine --dry-run
 ```
 
 ### 5. Convert to PyTorch
