@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-data_dir="${DATA_DIR:-/oak/stanford/projects/sorghum/SwiftMultiomeReanalysis/pseudobulk_encode_fine}"
-ref_dir="${REF_DIR:-/oak/stanford/projects/sorghum/genomes/SbicolorJGIv5.1}"
+data_dir="${DATA_DIR:-/oak/stanford/groups/akundaje/ayhe/plant-design/data/pseudobulk_encode_fine}"
+ref_dir="${REF_DIR:-/oak/stanford/groups/akundaje/ayhe/plant-design/data}"
 out_dir="${OUT_DIR:-${REPO_ROOT}/data/bigwigs_fine}"
 genome_fasta="${REPO_ROOT}/data/Sbicolor_730_v5.0.fa"
 chrom_sizes="${REPO_ROOT}/data/Sbicolor_730_v5.0.chrom.sizes"

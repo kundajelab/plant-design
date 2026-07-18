@@ -83,6 +83,7 @@ Trains Tn5 insertion bias models for all pseudobulks across all 5 folds:
 ```bash
 bash src/chrombpnet/fit/bias.sh
 python src/chrombpnet/fit/bias.py --dataset fine --dry-run
+python src/chrombpnet/fit/bias.py --dataset fine --interactive
 ```
 
 ### 4. Train accessibility (ChromBPNet) models
@@ -90,6 +91,7 @@ python src/chrombpnet/fit/bias.py --dataset fine --dry-run
 ```bash
 bash src/chrombpnet/fit/accessibility.sh
 python src/chrombpnet/fit/accessibility.py --dataset fine --dry-run
+python src/chrombpnet/fit/accessibility.py --dataset fine --interactive
 ```
 
 ### 5. Convert to PyTorch
@@ -250,18 +252,19 @@ python src/chrombpnet/benchmark/select_best_lora_model.py \
 
 ### 10. Attribution
 
-First, filter peaks to remove any containing non-ACGT characters, then save one-hot-encoded sequences (run from `src/chrombpnet/attribute/`):
+First, filter peaks to remove any containing non-ACGT characters, then save one-hot-encoded sequences:
 
 ```bash
+export REPO_ROOT="$(pwd)"
 for pseudobulk in "bundle_sheath" "epidermis" "guard" "mesophyll" "phloem" "xylem"; do
-    python filter_nonACGT_regions.py -v \
-        -f ../../../data/Sbicolor_730_v5.0.fa \
-        -b ../../../data/peaks/${pseudobulk}_peaks.narrowPeak \
-        -o ../../../data/peaks/${pseudobulk}_peaks_ACGT.narrowPeak
+    python src/chrombpnet/attribute/filter_nonACGT_regions.py -v \
+        -f "${REPO_ROOT}/data/Sbicolor_730_v5.0.fa" \
+        -b "${REPO_ROOT}/data/peaks/${pseudobulk}_peaks.narrowPeak" \
+        -o "${REPO_ROOT}/data/peaks/${pseudobulk}_peaks_ACGT.narrowPeak"
 done
 
 for pseudobulk in "bundle_sheath" "epidermis" "guard" "mesophyll" "phloem" "xylem"; do
-    python save_ohe.py -v -p ${pseudobulk}
+    python src/chrombpnet/attribute/save_ohe.py -v -p ${pseudobulk}
 done
 ```
 

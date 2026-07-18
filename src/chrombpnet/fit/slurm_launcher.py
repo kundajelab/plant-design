@@ -57,6 +57,11 @@ def add_common_args(
         action="store_true",
         help="Print sbatch scripts instead of submitting.",
     )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Run commands locally in the current environment instead of submitting SLURM jobs.",
+    )
     parser.add_argument("--partition", type=str, default="akundaje,gpu,owners")
     parser.add_argument(
         "--constraint", type=str, default="GPU_GEN:AMP|GPU_GEN:LOV|GPU_GEN:HPR"
@@ -159,6 +164,16 @@ def submit_jobs(
     log_dir.mkdir(parents=True, exist_ok=True)
     submitted = 0
     for job_name, command in jobs:
+        if args.interactive:
+            print(f"--- {job_name} ---")
+            print(quote_cmd(command))
+            if not args.dry_run:
+                result = subprocess.run(command, cwd=SCRIPT_DIR)
+                if result.returncode != 0:
+                    raise SystemExit(result.returncode)
+            submitted += 1
+            continue
+
         sbatch_script = make_sbatch_script(
             args=args, job_name=job_name, log_dir=log_dir, command=command
         )
@@ -180,5 +195,8 @@ def submit_jobs(
         print(f"{job_name}: {result.stdout.strip()}")
         submitted += 1
 
-    action = "Dry run: generated" if args.dry_run else "Submitted"
+    if args.interactive:
+        action = "Dry run: would run" if args.dry_run else "Ran"
+    else:
+        action = "Dry run: generated" if args.dry_run else "Submitted"
     print(f"{action} {submitted} {label} job(s).")

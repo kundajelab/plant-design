@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/../../.." && pwd)"
+
 dataset="${DATASET:-base}"
 case "${dataset}" in
     base)
         pseudobulks=("bundle_sheath" "epidermis" "guard" "mesophyll" "phloem" "xylem")
-        peaks_dir="../../../data/peaks"
+        peaks_dir="${repo_root}/data/peaks"
         ;;
     fine)
         pseudobulks=("epidermis_I" "epidermis_II" "mesophyll_etiolated" "mesophyll_photosynthetic" "meristem_epidermis" "bundle_sheath" "silica_cell" "sclerenchyma" "meristem" "phloem_companion_cell" "xylem" "phloem_parenchyma" "meristem_bundle_sheath" "subsidiary_cell" "guard_cell" "trichome" "ligule")
-        peaks_dir="../../../data/peaks_fine"
+        peaks_dir="${repo_root}/data/peaks_fine"
         ;;
     coarse)
         pseudobulks=("bundle_sheath" "Epidermis_I" "Epidermis_II" "meristem" "mesophyll" "phloem" "sclerenchyma" "xylem")
-        peaks_dir="../../../data/peaks_coarse"
+        peaks_dir="${repo_root}/data/peaks_coarse"
         ;;
     *)
         echo "Unknown DATASET='${dataset}' (expected base, fine, or coarse)" >&2
@@ -23,7 +26,7 @@ esac
 
 for pseudobulk in "${pseudobulks[@]}"; do
     echo time python filter_nonACGT_regions.py -v \
-        -f ../../../data/Sbicolor_730_v5.0.fa \
+        -f ${repo_root}/data/Sbicolor_730_v5.0.fa \
         -b ${peaks_dir}/${pseudobulk}_peaks.narrowPeak \
         -o ${peaks_dir}/${pseudobulk}_peaks_ACGT.narrowPeak
 done | parallel
