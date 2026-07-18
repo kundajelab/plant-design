@@ -18,8 +18,8 @@ cut -f1,2 "${genome_fasta}.fai" > "${chrom_sizes}"
 
 for f in "epidermis_I" "epidermis_II" "mesophyll_etiolated" "mesophyll_photosynthetic" "meristem_epidermis" "bundle_sheath" "silica_cell" "sclerenchyma" "meristem" "phloem_companion_cell" "xylem" "phloem_parenchyma" "meristem_bundle_sheath" "subsidiary_cell" "guard_cell" "trichome" "ligule"
 do
-    echo "time bam2bw ${data_dir}/${f}_fragments.tsv.gz -ps 4 -ns -4 -u -v -s ${chrom_sizes} -n ${out_dir}/${f}"
-    time bam2bw "${data_dir}/${f}_fragments.tsv.gz" \
+    echo "time uv run bam2bw ${data_dir}/${f}_fragments.tsv.gz -ps 4 -ns -4 -u -v -s ${chrom_sizes} -n ${out_dir}/${f}"
+    time uv --directory "${REPO_ROOT}" run bam2bw "${data_dir}/${f}_fragments.tsv.gz" \
         -ps 4 \
         -ns -4 \
         -u \

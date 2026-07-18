@@ -27,11 +27,11 @@ export NUMBA_NUM_THREADS=8
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/miniconda3/envs/chrombpnet/lib
 ```
 
-**PyTorch env** (`torch`) — preprocessing, conversion, and benchmarking (steps 1–2, 6–7):
+**PyTorch env** (`plant-design`) — preprocessing, conversion, and benchmarking (steps 1–2, 6–7):
 ```bash
-mamba create -n torch python=3.13
-mamba activate torch
-pip install bpnetlite tangermeme tqdm bam2bw
+mamba env create -f environment.yml
+mamba activate plant-design
+uv sync --frozen
 ```
 
 ## Pipeline Execution Order
@@ -53,10 +53,10 @@ bash src/chrombpnet/fit/bias.sh
 bash src/chrombpnet/fit/accessibility.sh
 
 # 6. Convert TensorFlow → PyTorch
-python src/chrombpnet/fit/convert_to_torch.py
+uv run python src/chrombpnet/fit/convert_to_torch.py
 
 # 7. Benchmark models
-python src/chrombpnet/benchmark/benchmark.py -p <pseudobulk> [-o]
+uv run python src/chrombpnet/benchmark/benchmark.py -p <pseudobulk> [-o]
 
 # 8. Compute differential accessibility
 python src/data_preprocessing/differential_accessibility.py

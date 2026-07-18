@@ -18,8 +18,8 @@ cut -f1,2 "${genome_fasta}.fai" > "${chrom_sizes}"
 
 for f in "bundle_sheath" "epidermis" "guard" "mesophyll" "phloem" "xylem"
 do
-    echo "time bam2bw ${data_dir}/${f}_fragments.tsv.gz -ps 4 -ns -4 -u -v -s ${chrom_sizes} -n ${out_dir}/${f}"
-    time bam2bw "${data_dir}/${f}_fragments.tsv.gz" \
+    echo "time uv run bam2bw ${data_dir}/${f}_fragments.tsv.gz -ps 4 -ns -4 -u -v -s ${chrom_sizes} -n ${out_dir}/${f}"
+    time uv --directory "${REPO_ROOT}" run bam2bw "${data_dir}/${f}_fragments.tsv.gz" \
         -ps 4 \
         -ns -4 \
         -u \

@@ -30,14 +30,15 @@ Also note that TF installation is a bit of a pain. These things have worked for 
 All upstream and downstream processing from model training requires a separate PyTorch environment, as TensorFlow 2.8 and modern PyTorch are not compatible in the same environment:
 
 ```bash
-mamba create -n torch python=3.14
-mamba activate torch
-pip install bpnet-lite tangermeme tqdm bam2bw ledidi daicon
+mamba env create -f environment.yml
+mamba activate plant-design
+uv sync --frozen
 ```
 
-`daicon` provides the low-rank convolutional/linear adapter implementation used
-for differential accessibility fine-tuning. Source:
-<https://github.com/adamyhe/daicon>.
+Python dependencies for preprocessing, conversion, benchmarking, attribution,
+sequence design, and adapter fine-tuning are managed in `pyproject.toml` and
+locked in `uv.lock`. Run PyTorch-side entrypoints through `uv run`, for example
+`uv run python src/chrombpnet/fit/convert_to_torch.py`.
 
 ## Pipeline
 
@@ -64,9 +65,9 @@ data/
 ```
 
 The base dataset is the default for training and analysis scripts. Use
-`DATASET=fine` or `DATASET=coarse` with shell launchers, and `--dataset fine` or
-`--dataset coarse` with Python entrypoints such as `convert_to_torch.py`,
-`benchmark.py`, and DeepLIFT/SHAP scripts.
+`--dataset fine` or `--dataset coarse` with the training launchers and Python
+entrypoints such as `convert_to_torch.py`, `benchmark.py`, and DeepLIFT/SHAP
+scripts.
 
 ### 2. Generate non-peak background regions
 
@@ -80,12 +81,14 @@ Trains Tn5 insertion bias models for all pseudobulks across all 5 folds:
 
 ```bash
 bash src/chrombpnet/fit/bias.sh
+bash src/chrombpnet/fit/bias.sh --dataset fine --dry-run
 ```
 
 ### 4. Train accessibility (ChromBPNet) models
 
 ```bash
 bash src/chrombpnet/fit/accessibility.sh
+bash src/chrombpnet/fit/accessibility.sh --dataset fine --dry-run
 ```
 
 ### 5. Convert to PyTorch
@@ -93,7 +96,8 @@ bash src/chrombpnet/fit/accessibility.sh
 Converts trained TensorFlow `.h5` models to PyTorch `.torch` format:
 
 ```bash
-python src/chrombpnet/fit/convert_to_torch.py
+uv run python src/chrombpnet/fit/convert_to_torch.py
+uv run python src/chrombpnet/fit/convert_to_torch.py --dataset fine
 ```
 
 ### 6. Benchmark
@@ -101,8 +105,8 @@ python src/chrombpnet/fit/convert_to_torch.py
 Evaluates models on held-out test chromosomes per fold:
 
 ```bash
-python src/chrombpnet/benchmark/benchmark.py -p <pseudobulk> [-o]
-python src/chrombpnet/benchmark/benchmark.py -p <pseudobulk> --adapter --da-fraction 0.8
+uv run python src/chrombpnet/benchmark/benchmark.py -p <pseudobulk> [-o]
+uv run python src/chrombpnet/benchmark/benchmark.py -p <pseudobulk> --adapter --da-fraction 0.8
 ```
 
 Options:

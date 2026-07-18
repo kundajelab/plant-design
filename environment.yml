@@ -1,4 +1,4 @@
-name: procap-atlas
+name: plant-design
 channels:
   - conda-forge
   - bioconda

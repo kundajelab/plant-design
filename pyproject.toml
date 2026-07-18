@@ -3,13 +3,17 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "procap-atlas-local"
+name = "plant-design"
 version = "0.1.0"
-description = "Local Python environment for PRO-cap atlas scripts"
+description = "Local Python environment for plant regulatory sequence modeling workflows"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "bam2bw",
+    "bpnet-lite",
+    "daicon",
     "huggingface-hub",
     "joblib",
+    "ledidi",
     "matplotlib",
     "numpy",
     "pandas",
@@ -40,7 +44,6 @@ cherimoya = ["cherimoya", "leidenalg==0.10.2"]
 [dependency-groups]
 dev = ["pytest"]
 notebook = [
-    "bpnet-lite",
     "ipykernel",
     "jupyterlab",
     # pyzmq 27.1 has no manylinux2014 x86_64 wheel and builds against
