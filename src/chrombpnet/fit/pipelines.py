@@ -7,6 +7,168 @@ import copy
 from chrombpnet.data import DefaultDataFile, get_default_data_path
 import numpy as np
 
+def _count_bed_rows(path):
+	if not os.path.exists(path):
+		return 0
+	with open(path) as f:
+		return sum(1 for line in f if line.strip())
+
+def _rewrite_tsv_value(path, key, value):
+	if not os.path.exists(path):
+		return
+	lines = []
+	replaced = False
+	with open(path) as f:
+		for line in f:
+			if line.startswith(f"{key}\t") or line.startswith(f"{key}:"):
+				sep = "\t" if "\t" in line else ":"
+				lines.append(f"{key}{sep}{value}\n")
+				replaced = True
+			else:
+				lines.append(line)
+	if not replaced:
+		lines.append(f"{key}\t{value}\n")
+	with open(path, "w") as f:
+		f.writelines(lines)
+
+def _count_stats(label, values):
+	values = np.asarray(values)
+	if len(values) == 0:
+		return f"{label}: n=0"
+	quantiles = np.quantile(values, [0, 0.01, 0.1, 0.5, 0.9, 0.99, 1])
+	unique_count = len(np.unique(values))
+	return (
+		f"{label}: n={len(values)}, unique={unique_count}, "
+		f"min={quantiles[0]:.4g}, q01={quantiles[1]:.4g}, "
+		f"q10={quantiles[2]:.4g}, median={quantiles[3]:.4g}, "
+		f"q90={quantiles[4]:.4g}, q99={quantiles[5]:.4g}, "
+		f"max={quantiles[6]:.4g}"
+	)
+
+def _recover_empty_bias_nonpeaks(args, fpx, filtered_bias_nonpeaks):
+	import pyfaidx
+	import pyBigWig
+	import chrombpnet.helpers.hyperparameters.param_utils as param_utils
+
+	names = ["chr", "start", "end", "1", "2", "3", "4", "5", "6", "summit"]
+	splits_dict = json.load(open(args.chr_fold_path))
+	chroms_to_keep = splits_dict["train"] + splits_dict["valid"]
+	test_chroms_to_keep = splits_dict["test"]
+	in_peaks = pd.read_csv(args.peaks, sep="\t", header=None, names=names)
+	in_nonpeaks = pd.read_csv(args.nonpeaks, sep="\t", header=None, names=names)
+	peaks = in_peaks[in_peaks["chr"].isin(chroms_to_keep)]
+	nonpeaks = in_nonpeaks[in_nonpeaks["chr"].isin(chroms_to_keep)]
+	test_nonpeaks = in_nonpeaks[in_nonpeaks["chr"].isin(test_chroms_to_keep)]
+	raw_peak_rows = in_peaks.shape[0]
+	raw_nonpeak_rows = in_nonpeaks.shape[0]
+	fold_peak_rows = peaks.shape[0]
+	fold_nonpeak_rows = nonpeaks.shape[0]
+	if peaks.empty or nonpeaks.empty:
+		print(
+			"Bias nonpeak recovery summary: "
+			f"raw_peaks={raw_peak_rows}, raw_nonpeaks={raw_nonpeak_rows}, "
+			f"train_valid_peaks={fold_peak_rows}, "
+			f"train_valid_nonpeaks={fold_nonpeak_rows}"
+		)
+		return 0
+
+	bw = pyBigWig.open(args.bigwig)
+	genome = pyfaidx.Fasta(args.genome)
+	try:
+		nonpeaks = param_utils.filter_edge_regions(
+			nonpeaks, bw, args.inputlen, peaks_bool=0
+		)
+		test_nonpeaks = param_utils.filter_edge_regions(
+			test_nonpeaks, bw, args.inputlen, peaks_bool=0
+		)
+		peaks = param_utils.filter_edge_regions(peaks, bw, args.inputlen, peaks_bool=1)
+		peak_counts, _ = param_utils.get_seqs_cts(
+			genome, bw, peaks, args.inputlen, args.outputlen
+		)
+		nonpeak_counts, _ = param_utils.get_seqs_cts(
+			genome, bw, nonpeaks, args.inputlen, args.outputlen
+		)
+		if len(peak_counts) == 0 or len(nonpeak_counts) == 0:
+			print(
+				"Bias nonpeak recovery summary: "
+				f"raw_peaks={raw_peak_rows}, raw_nonpeaks={raw_nonpeak_rows}, "
+				f"train_valid_peaks={fold_peak_rows}, "
+				f"train_valid_nonpeaks={fold_nonpeak_rows}, "
+				f"edge_filtered_peaks={peaks.shape[0]}, "
+				f"edge_filtered_nonpeaks={nonpeaks.shape[0]}, "
+				f"edge_filtered_test_nonpeaks={test_nonpeaks.shape[0]}"
+			)
+			return 0
+		cutoff = np.quantile(peak_counts, 0.01) * args.bias_threshold_factor
+		if cutoff <= 0:
+			print(
+				"Bias nonpeak recovery summary: "
+				f"raw_peaks={raw_peak_rows}, raw_nonpeaks={raw_nonpeak_rows}, "
+				f"train_valid_peaks={fold_peak_rows}, "
+				f"train_valid_nonpeaks={fold_nonpeak_rows}, "
+				f"edge_filtered_peaks={peaks.shape[0]}, "
+				f"edge_filtered_nonpeaks={nonpeaks.shape[0]}, cutoff={cutoff:.4g}"
+			)
+			print(_count_stats("peak_counts", peak_counts))
+			return 0
+	finally:
+		bw.close()
+
+	keep = nonpeak_counts < cutoff
+	final_counts = nonpeak_counts[keep]
+	lower_thresh = (
+		np.quantile(final_counts, 1 - args.outlier_threshold)
+		if len(final_counts)
+		else np.nan
+	)
+	upper_thresh = (
+		np.quantile(final_counts, args.outlier_threshold)
+		if len(final_counts)
+		else np.nan
+	)
+	strict_outlier_keep = (
+		(final_counts < upper_thresh) & (final_counts > lower_thresh)
+		if len(final_counts)
+		else []
+	)
+	recovered = nonpeaks[keep]
+	print(
+		"Bias nonpeak recovery summary: "
+		f"raw_peaks={raw_peak_rows}, raw_nonpeaks={raw_nonpeak_rows}, "
+		f"train_valid_peaks={fold_peak_rows}, "
+		f"train_valid_nonpeaks={fold_nonpeak_rows}, "
+		f"edge_filtered_peaks={peaks.shape[0]}, "
+		f"edge_filtered_nonpeaks={nonpeaks.shape[0]}, "
+		f"edge_filtered_test_nonpeaks={test_nonpeaks.shape[0]}, "
+		f"bias_count_cutoff={cutoff:.4g}, "
+		f"post_cutoff_nonpeaks={len(final_counts)}, "
+		f"outlier_lower={lower_thresh:.4g}, "
+		f"outlier_upper={upper_thresh:.4g}, "
+		f"strict_outlier_pass={sum(strict_outlier_keep)}"
+	)
+	print(_count_stats("peak_counts", peak_counts))
+	print(_count_stats("nonpeak_counts_pre_cutoff", nonpeak_counts))
+	print(_count_stats("nonpeak_counts_post_cutoff", final_counts))
+	if recovered.empty:
+		return 0
+
+	all_nonpeaks = pd.concat([recovered, test_nonpeaks])
+	all_nonpeaks.to_csv(filtered_bias_nonpeaks, sep="\t", header=False, index=False)
+
+	counts_loss_weight = np.median(final_counts) / 10
+	if counts_loss_weight < 1.0:
+		counts_loss_weight = 1.0
+	_rewrite_tsv_value(
+		os.path.join(args.output_dir,"auxiliary/{}bias_model_params.tsv".format(fpx)),
+		"counts_loss_weight",
+		str(round(counts_loss_weight, 2)),
+	)
+	print(
+		"Recovered empty bias nonpeak set by skipping ChromBPNet outlier removal: "
+		f"kept {recovered.shape[0]} train/valid nonpeaks with count < {cutoff}"
+	)
+	return all_nonpeaks.shape[0]
+
 def chrombpnet_train_pipeline(args):
 
 	if args.file_prefix:
@@ -294,6 +456,16 @@ def train_bias_pipeline(args):
 	args_copy = copy.deepcopy(args)
 	args_copy.output_prefix = os.path.join(args.output_dir,"auxiliary/{}".format(fpx))
 	find_bias_hyperparams.main(args_copy)
+
+	filtered_bias_nonpeaks = os.path.join(args.output_dir,"auxiliary/{}filtered.bias_nonpeaks.bed".format(fpx))
+	if _count_bed_rows(filtered_bias_nonpeaks) == 0:
+		recovered = _recover_empty_bias_nonpeaks(args, fpx, filtered_bias_nonpeaks)
+		if recovered == 0:
+			raise RuntimeError(
+				"ChromBPNet bias preprocessing produced no usable nonpeaks at "
+				f"{filtered_bias_nonpeaks}, and the count-threshold fallback also "
+				"found none. Check the bigWig, peaks, nonpeaks, and chromosome split."
+			)
 	
 	# separating models from logs
 	os.rename(os.path.join(args.output_dir,"auxiliary/{}bias_model_params.tsv".format(fpx)),os.path.join(args.output_dir,"logs/{}bias_model_params.tsv".format(fpx)))

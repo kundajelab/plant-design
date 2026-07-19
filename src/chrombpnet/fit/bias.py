@@ -18,6 +18,18 @@ from slurm_launcher import (
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     add_common_args(parser, default_mem="32G", default_time="48:00:00")
+    parser.add_argument(
+        "--bias-threshold-factor",
+        type=float,
+        default=0.5,
+        help="Bias nonpeak count threshold factor passed to ChromBPNet (default: 0.5).",
+    )
+    parser.add_argument(
+        "--outlier-threshold",
+        type=float,
+        default=0.9999,
+        help="Bias preprocessing outlier quantile (default: 0.9999).",
+    )
     return parser.parse_args()
 
 
@@ -79,11 +91,13 @@ def main():
                 "-fl",
                 REPO_ROOT / "configs" / f"fold_{fold}.json",
                 "-b",
-                "0.5",
+                args.bias_threshold_factor,
                 "-o",
                 out_dir,
                 "-fp",
                 f"f{fold}",
+                "-oth",
+                args.outlier_threshold,
             ]
             command = cleanup_then_run([out_dir], command)
             jobs.append((job_name, command))
