@@ -69,7 +69,12 @@ def add_common_args(
     parser.add_argument("--cpus-per-task", type=int, default=4)
     parser.add_argument("--mem", type=str, default=default_mem)
     parser.add_argument("--time", type=str, default=default_time)
-    parser.add_argument("--numba-threads", type=int, default=4)
+    parser.add_argument(
+        "--numba-threads",
+        type=int,
+        default=None,
+        help="NUMBA_NUM_THREADS for ChromBPNet jobs. Defaults to --cpus-per-task.",
+    )
     parser.add_argument(
         "--apptainer-image",
         type=str,
@@ -131,6 +136,7 @@ def make_sbatch_script(
     log_dir: Path,
     command: list[str | Path],
 ) -> str:
+    numba_threads = args.numba_threads or args.cpus_per_task
     gpu_lines = ""
     gpu_setup = ""
     if args.gpus > 0:
@@ -155,7 +161,7 @@ set -euo pipefail
 if [[ -f "${{HOME}}/bs.sh" ]]; then
     source "${{HOME}}/bs.sh"
 fi
-export NUMBA_NUM_THREADS={args.numba_threads}
+export NUMBA_NUM_THREADS={numba_threads}
 {gpu_setup}\
 
 cd {shlex.quote(str(SCRIPT_DIR))}
