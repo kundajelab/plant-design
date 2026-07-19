@@ -9,6 +9,7 @@ from slurm_launcher import (
     REPO_ROOT,
     SCRIPT_DIR,
     add_common_args,
+    cleanup_then_run,
     resolve_dataset_and_jobs,
     submit_jobs,
 )
@@ -82,6 +83,7 @@ def main():
                 "-o",
                 out_dir,
             ]
+            command = cleanup_then_run([out_dir], command)
             jobs.append((job_name, command))
 
     submit_jobs(args=args, log_dir=log_dir, jobs=jobs, label="accessibility")

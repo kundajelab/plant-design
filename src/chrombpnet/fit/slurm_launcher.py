@@ -111,6 +111,12 @@ def resolve_dataset_and_jobs(args: argparse.Namespace):
     return pseudobulks, folds
 
 
+def cleanup_then_run(cleanup_paths: list[str | Path], command: list[str | Path]):
+    cleanup = " ".join(shlex.quote(str(path)) for path in cleanup_paths)
+    quoted_command = " ".join(shlex.quote(str(part)) for part in command)
+    return ["bash", "-lc", f"rm -rf -- {cleanup} && {quoted_command}"]
+
+
 def wrap_command(parts: list[str | Path]) -> str:
     quoted = [shlex.quote(str(part)) for part in parts]
     option_start = next(
