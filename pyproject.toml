@@ -14,6 +14,7 @@ dependencies = [
     "huggingface-hub",
     "joblib",
     "ledidi",
+    "leidenalg==0.10.2",
     "matplotlib",
     "numpy",
     "pandas",
@@ -33,10 +34,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-plot = ["matplotlib", "pillow", "seaborn"]
 hub = ["huggingface-hub"]
-bpnet = ["bpnet-lite", "leidenalg==0.10.2"]
-cherimoya = ["cherimoya", "leidenalg==0.10.2"]
+cherimoya = ["cherimoya"]
 # MotifCompendium and personal_bpnet are external/local research dependencies
 # until resolvable install sources are confirmed.
 # Metaformer / promoterai-torch is still in development and will be added
