@@ -73,6 +73,23 @@ while read -r pseudobulk; do
 done < "${config}" | parallel
 ```
 
+For coarse/fine datasets:
+
+```bash
+dataset=coarse
+config="configs/pseudobulks_${dataset}.txt"
+peaks_dir="data/peaks_${dataset}"
+
+while read -r pseudobulk; do
+    test -n "${pseudobulk}" || continue
+    printf '%q ' uv run python src/chrombpnet/attribute/filter_nonACGT_regions.py -v \
+        -f data/Sbicolor_730_v5.0.fa \
+        -b "${peaks_dir}/${pseudobulk}_peaks.narrowPeak" \
+        -o "${peaks_dir}/${pseudobulk}_peaks_ACGT.narrowPeak"
+    printf '\n'
+done < "${config}" | parallel -j 4
+```
+
 ## Save One-Hot Encoded Sequences
 
 Save one-hot encoded sequence arrays once per pseudobulk before attribution:
@@ -129,9 +146,9 @@ Fine or coarse all-peak attributions:
 
 ```bash
 uv run python src/chrombpnet/attribute/launch.py \
-    --dataset fine \
+    --dataset coarse \
     --model accessibility \
-    --time 6:00:00
+    --time 24:00:00
 ```
 
 Base DA-specific attribution jobs:

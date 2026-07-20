@@ -9,21 +9,21 @@ either the full accessibility submodel or daicon adapters using a mixed training
 This balances sharpening cell-type specificity while preserving coverage of
 the original training distribution to avoid catastrophic forgetting.
 
-Requires differential_accessibility.py outputs to exist:
-    data/peaks/differential_accessibility/da_peaks_tau.bed
-    data/peaks/differential_accessibility/da_peaks_pairwise.bed
+Requires differential_accessibility.py outputs to exist in the selected dataset:
+    data/peaks{_dataset}/differential_accessibility/da_peaks_tau.bed
+    data/peaks{_dataset}/differential_accessibility/da_peaks_pairwise.bed
 
 Full finetuned models are saved to:
-    models/{pseudobulk}/finetuned/{pseudobulk}_f{fold}.torch
-    models/{pseudobulk}/finetuned/{pseudobulk}_f{fold}.accessibility.torch
+    models/{dataset/}{pseudobulk}/finetuned/{pseudobulk}_f{fold}.torch
+    models/{dataset/}{pseudobulk}/finetuned/{pseudobulk}_f{fold}.accessibility.torch
 
 Daicon adapter bundles are saved to:
-    models/{pseudobulk}/adapters/{adapter_run_id}/{pseudobulk}_f{fold}.adapter.pt
+    models/{dataset/}{pseudobulk}/adapters/{adapter_run_id}/{pseudobulk}_f{fold}.adapter.pt
 
 Usage:
-    python src/chrombpnet/da_finetuning/finetune_da.py -p mesophyll -f 0
-    python src/chrombpnet/da_finetuning/finetune_da.py -p mesophyll -f 0 --lr 5e-5 --epochs 30
-    python src/chrombpnet/da_finetuning/finetune_da.py -p mesophyll -f 0 --mode adapter --da-fraction 0.8
+    uv run python src/chrombpnet/da_finetuning/finetune_da.py -p mesophyll -f 0
+    uv run python src/chrombpnet/da_finetuning/finetune_da.py --dataset coarse -p mesophyll -f 0
+    uv run python src/chrombpnet/da_finetuning/finetune_da.py -p mesophyll -f 0 --mode adapter --da-fraction 0.8
 """
 
 import argparse
@@ -47,6 +47,7 @@ from torch.utils.data import DataLoader
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
+DATASETS = ("base", "fine", "coarse")
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 IN_WINDOW = 2114
@@ -56,16 +57,32 @@ MNLLLoss = None
 log1pMSELoss = None
 extract_loci = None
 predict = None
-DA_TAU_BED = (
-    REPO_ROOT / "data" / "peaks" / "differential_accessibility" / "da_peaks_tau.bed"
-)
-DA_PW_BED = (
-    REPO_ROOT
-    / "data"
-    / "peaks"
-    / "differential_accessibility"
-    / "da_peaks_pairwise.bed"
-)
+
+def dataset_suffix(dataset):
+    return "" if dataset == "base" else f"_{dataset}"
+
+
+def read_pseudobulks(dataset):
+    suffix = dataset_suffix(dataset)
+    path = REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
+    return [
+        line.strip()
+        for line in path.read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+
+
+def data_subdir(name, dataset):
+    return REPO_ROOT / "data" / f"{name}{dataset_suffix(dataset)}"
+
+
+def model_root(dataset):
+    root = REPO_ROOT / "models"
+    return root if dataset == "base" else root / dataset
+
+
+def da_dir(dataset):
+    return data_subdir("peaks", dataset) / "differential_accessibility"
 
 
 def da_fraction_tag(da_fraction):
@@ -189,13 +206,17 @@ class MixedFinetuneDataset(torch.utils.data.Dataset):
         return self._rc(X, y)
 
 
-def load_da_peaks():
+def load_da_peaks(dataset):
     """Load and deduplicate DA peaks from tau and pairwise BED files."""
     frames = []
-    for path in (DA_TAU_BED, DA_PW_BED):
+    for path in (
+        da_dir(dataset) / "da_peaks_tau.bed",
+        da_dir(dataset) / "da_peaks_pairwise.bed",
+    ):
         if not path.exists():
             print(
-                f"Error: {path} not found. Run differential_accessibility.py first.",
+                f"Error: {path} not found. "
+                f"Run differential_accessibility.py --dataset {dataset} first.",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -216,9 +237,9 @@ def load_da_peaks():
     )
 
 
-def load_ct_peaks(ps):
+def load_ct_peaks(ps, dataset):
     """Load cell-type–specific peaks as a chrom/start/end DataFrame."""
-    path = REPO_ROOT / "data" / "peaks" / f"{ps}_peaks.narrowPeak"
+    path = data_subdir("peaks", dataset) / f"{ps}_peaks.narrowPeak"
     if not path.exists():
         print(f"Error: peaks file not found: {path}", file=sys.stderr)
         sys.exit(1)
@@ -444,6 +465,7 @@ def finetune(
 def _adapter_manifest(args, base_model_path, adapter_config, trainable_params):
     return {
         "format_version": 1,
+        "dataset": args.dataset,
         "pseudobulk": args.pseudobulk,
         "fold": args.fold,
         "base_model_path": str(base_model_path),
@@ -481,8 +503,13 @@ def build_parser():
         "-p",
         "--pseudobulk",
         required=True,
-        choices=PSEUDOBULKS,
         help="Cell type to finetune",
+    )
+    parser.add_argument(
+        "--dataset",
+        choices=DATASETS,
+        default="base",
+        help="Dataset namespace to finetune (default: base).",
     )
     parser.add_argument(
         "--lr", type=float, default=1e-4, help="Learning rate (default: 1e-4)"
@@ -586,6 +613,12 @@ def build_parser():
 def parse_args(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
+    pseudobulks = read_pseudobulks(args.dataset)
+    if args.pseudobulk not in pseudobulks:
+        parser.error(
+            f"unknown pseudobulk '{args.pseudobulk}' for dataset '{args.dataset}'. "
+            f"Choose one of: {', '.join(pseudobulks)}"
+        )
     if args.adapter_run_id is None:
         args.adapter_run_id = default_adapter_run_id(args.da_fraction)
     return args
@@ -596,7 +629,8 @@ def main(argv=None):
 
     ps = args.pseudobulk
     fold = args.fold
-    bw_path = str(REPO_ROOT / "data" / "bigwigs" / f"{ps}.bw")
+    root = model_root(args.dataset)
+    bw_path = str(data_subdir("bigwigs", args.dataset) / f"{ps}.bw")
     if not Path(bw_path).exists():
         print(f"Error: bigwig not found: {bw_path}", file=sys.stderr)
         sys.exit(1)
@@ -609,17 +643,17 @@ def main(argv=None):
         sys.exit(1)
 
     print("Loading DA peaks...")
-    da_peaks = load_da_peaks()
+    da_peaks = load_da_peaks(args.dataset)
     print(f"  {len(da_peaks)} unique DA peaks (tau + pairwise)")
 
     print(f"Loading cell-type peaks for {ps}...")
-    ct_peaks = load_ct_peaks(ps)
+    ct_peaks = load_ct_peaks(ps, args.dataset)
     print(f"  {len(ct_peaks)} cell-type peaks")
 
     if args.mode == "adapter":
-        out_dir = REPO_ROOT / "models" / ps / "adapters" / args.adapter_run_id
+        out_dir = root / ps / "adapters" / args.adapter_run_id
     else:
-        out_dir = REPO_ROOT / "models" / ps / fine_tag(args.da_fraction)
+        out_dir = root / ps / fine_tag(args.da_fraction)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     all_chroms = sorted(
@@ -633,7 +667,7 @@ def main(argv=None):
     print(f"  Valid chroms: {test_chroms}")
 
     # --- Load source model ---
-    model_path = REPO_ROOT / "models" / ps / "torch" / f"{ps}_f{fold}.torch"
+    model_path = root / ps / "torch" / f"{ps}_f{fold}.torch"
     print(f"  Loading model from {model_path}...")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = torch.load(model_path, weights_only=False, map_location=device)
@@ -672,7 +706,9 @@ def main(argv=None):
             param.requires_grad = True
 
     # --- Load nonpeaks ---
-    nonpeak_path = REPO_ROOT / "data" / "nonpeaks" / f"{ps}_fold_{fold}_negatives.bed"
+    nonpeak_path = (
+        data_subdir("nonpeaks", args.dataset) / f"{ps}_fold_{fold}_negatives.bed"
+    )
     if not nonpeak_path.exists():
         print(f"Error: nonpeaks not found: {nonpeak_path}", file=sys.stderr)
         sys.exit(1)
@@ -773,7 +809,7 @@ def main(argv=None):
         )
         if args.materialize_model:
             materialized_dir = (
-                REPO_ROOT / "models" / ps / "adapter_models" / args.adapter_run_id
+                root / ps / "adapter_models" / args.adapter_run_id
             )
             materialized_dir.mkdir(parents=True, exist_ok=True)
             torch.save(model, materialized_dir / f"{ps}_f{fold}.torch")

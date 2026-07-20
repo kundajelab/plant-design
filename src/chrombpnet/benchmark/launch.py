@@ -21,7 +21,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 BENCHMARK_DIR = REPO_ROOT / "src" / "chrombpnet" / "benchmark"
 DATASETS = ("base", "fine", "coarse")
-PYTHON = ("uv", "run", "python")
+PYTHON = ("uv", "run", "--frozen", "python")
 
 
 @dataclass(frozen=True)
@@ -135,6 +135,23 @@ def existing_cross_path(dataset_name, variant, pseudobulk):
     return path if path.exists() else None
 
 
+def dataset_suffix(dataset_name):
+    return "" if dataset_name == "base" else f"_{dataset_name}"
+
+
+def existing_da_path(dataset_name, variant):
+    if dataset_name == "base":
+        path = variant.da_path
+    else:
+        path = (
+            REPO_ROOT
+            / "performance_metrics"
+            / f"differential_accessibility{dataset_suffix(dataset_name)}"
+            / variant.da_path.name
+        )
+    return path if path.exists() else None
+
+
 def benchmark_da_peaks_path(da_path):
     return da_path.with_name(
         da_path.stem.replace("da_benchmark", "da_benchmark_peaks") + da_path.suffix
@@ -167,21 +184,16 @@ def build_variant_job(args, variant):
             cmd.append("-v")
         cross.append(" ".join(shlex.quote(str(part)) for part in cmd))
 
-    if args.dataset != "base":
-        return {
-            "job_name": slurm_name(f"benchmark_{args.dataset}_{variant.name}"),
-            "cross": cross,
-            "serial": serial,
-            "skipped": skipped,
-        }
-
-    da_done = variant.da_path.exists() and (
-        not args.save_da_outputs or benchmark_da_peaks_path(variant.da_path).exists()
+    da_path = existing_da_path(args.dataset, variant)
+    da_done = da_path is not None and (
+        not args.save_da_outputs or benchmark_da_peaks_path(da_path).exists()
     )
     if not da_done or args.rerun:
         cmd = [
             *PYTHON,
             BENCHMARK_DIR / "benchmark_da.py",
+            "--dataset",
+            args.dataset,
             "-b",
             args.batch_size,
             *variant.flags,
@@ -193,6 +205,14 @@ def build_variant_job(args, variant):
         serial.append(" ".join(shlex.quote(str(part)) for part in cmd))
     else:
         skipped += 1
+
+    if args.dataset != "base":
+        return {
+            "job_name": slurm_name(f"benchmark_{args.dataset}_{variant.name}"),
+            "cross": cross,
+            "serial": serial,
+            "skipped": skipped,
+        }
 
     if not variant.pairwise_path.exists() or args.rerun:
         serial.append(

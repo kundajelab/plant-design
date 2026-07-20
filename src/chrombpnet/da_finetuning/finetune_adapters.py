@@ -7,7 +7,7 @@ wrapper preserves the historical adapter CLI used by sweep launchers.
 
 import argparse
 
-from finetune_da import PSEUDOBULKS, main as finetune_da_main
+from finetune_da import DATASETS, main as finetune_da_main
 
 
 def build_parser():
@@ -18,8 +18,13 @@ def build_parser():
         "-p",
         "--pseudobulk",
         required=True,
-        choices=PSEUDOBULKS,
         help="Cell type to finetune",
+    )
+    parser.add_argument(
+        "--dataset",
+        choices=DATASETS,
+        default="base",
+        help="Dataset namespace to finetune (default: base).",
     )
     parser.add_argument("-f", "--fold", type=int, required=True, help="Fold index")
     parser.add_argument(
@@ -67,6 +72,8 @@ def build_parser():
 
 def _main_argv(args):
     argv = [
+        "--dataset",
+        args.dataset,
         "-p",
         args.pseudobulk,
         "-f",

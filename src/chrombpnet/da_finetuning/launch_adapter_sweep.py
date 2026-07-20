@@ -11,8 +11,9 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-PSEUDOBULKS_PATH = REPO_ROOT / "configs" / "pseudobulks.txt"
+DATASETS = ("base", "fine", "coarse")
 N_FOLDS = 5
+PYTHON = ("uv", "run", "--frozen", "python")
 
 
 DEFAULT_SWEEP = {
@@ -48,6 +49,24 @@ def _load_sweep(path):
     return merged
 
 
+def dataset_suffix(dataset):
+    return "" if dataset == "base" else f"_{dataset}"
+
+
+def model_root(dataset):
+    root = REPO_ROOT / "models"
+    return root if dataset == "base" else root / dataset
+
+
+def read_pseudobulks(dataset):
+    path = REPO_ROOT / "configs" / f"pseudobulks{dataset_suffix(dataset)}.txt"
+    return [
+        p.strip()
+        for p in path.read_text().splitlines()
+        if p.strip() and not p.startswith("#")
+    ]
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
@@ -55,6 +74,12 @@ def main():
     parser.add_argument("--config", type=Path, default=None)
     parser.add_argument("--sweep-prefix", default="adapter")
     parser.add_argument("--pseudobulk", action="append", default=None)
+    parser.add_argument(
+        "--dataset",
+        choices=DATASETS,
+        default="base",
+        help="Dataset namespace to finetune (default: base).",
+    )
     parser.add_argument("--fold", type=int, action="append", default=None)
     parser.add_argument("--materialize-model", action="store_true")
     parser.add_argument(
@@ -97,9 +122,17 @@ def main():
     sweep = _load_sweep(args.config)
     pseudobulks = args.pseudobulk
     if pseudobulks is None:
-        pseudobulks = [
-            p for p in PSEUDOBULKS_PATH.read_text().splitlines() if p.strip()
-        ]
+        pseudobulks = read_pseudobulks(args.dataset)
+    else:
+        choices = read_pseudobulks(args.dataset)
+        unknown = [p for p in pseudobulks if p not in choices]
+        if unknown:
+            print(
+                f"Error: unknown pseudobulk(s) for dataset '{args.dataset}': "
+                f"{', '.join(unknown)}. Choose one of: {', '.join(choices)}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
     folds = args.fold if args.fold is not None else list(range(N_FOLDS))
 
     script = REPO_ROOT / "src" / "chrombpnet" / "da_finetuning" / "finetune_adapters.py"
@@ -131,8 +164,10 @@ def main():
         for pseudobulk in pseudobulks:
             for fold in folds:
                 cmd = [
-                    "python",
+                    *PYTHON,
                     str(script),
+                    "--dataset",
+                    args.dataset,
                     "-p",
                     pseudobulk,
                     "-f",
@@ -172,8 +207,7 @@ def main():
                 if args.materialize_model:
                     cmd.append("--materialize-model")
                 log_path = (
-                    REPO_ROOT
-                    / "models"
+                    model_root(args.dataset)
                     / pseudobulk
                     / "adapters"
                     / sweep_id
@@ -232,7 +266,7 @@ def main():
             skipped_finished_jobs += 1
             continue
 
-        job_name = f"adapter_sweep_{args.sweep_prefix}_{pseudobulk}_f{fold}"
+        job_name = f"adapter_sweep_{args.dataset}_{args.sweep_prefix}_{pseudobulk}_f{fold}"
         command_text = "\n".join(commands)
         if args.scheduler_gpus is None:
             run_block = "\n".join(f"time {cmd}" for cmd in commands)
@@ -259,7 +293,7 @@ def main():
 #SBATCH --error={log_dir}/{job_name}.err
 
 source ~/bs.sh
-mamba activate torch
+mamba activate plant-design
 export NUMBA_NUM_THREADS={args.numba_threads}
 nvidia-smi -L
 

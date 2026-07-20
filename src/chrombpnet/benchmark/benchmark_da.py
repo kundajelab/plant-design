@@ -11,6 +11,7 @@ Requires da_peaks.csv to already exist (run differential_accessibility.py first)
 
 Usage:
     uv run python src/chrombpnet/benchmark/benchmark_da.py
+    uv run python src/chrombpnet/benchmark/benchmark_da.py --dataset coarse
     uv run python src/chrombpnet/benchmark/benchmark_da.py --save-output --finetuned
 """
 
@@ -46,11 +47,45 @@ from differential_accessibility import (
 )
 
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
+DATASETS = ("base", "fine", "coarse")
 FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
 CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
-DA_PATH = REPO_ROOT / "data" / "peaks" / "differential_accessibility" / "da_peaks.csv"
 IN_WINDOW = 2114
 OUT_WINDOW = 1000
+
+
+def dataset_suffix(dataset):
+    return "" if dataset == "base" else f"_{dataset}"
+
+
+def read_pseudobulks(dataset):
+    suffix = dataset_suffix(dataset)
+    path = REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
+    return [
+        line.strip()
+        for line in path.read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+
+
+def da_path(dataset):
+    return (
+        REPO_ROOT
+        / "data"
+        / f"peaks{dataset_suffix(dataset)}"
+        / "differential_accessibility"
+        / "da_peaks.csv"
+    )
+
+
+def model_root(dataset):
+    root = REPO_ROOT / "models"
+    return root if dataset == "base" else root / dataset
+
+
+def da_metrics_dir(dataset):
+    suffix = dataset_suffix(dataset)
+    return REPO_ROOT / "performance_metrics" / f"differential_accessibility{suffix}"
 
 
 def corr(x, y):
@@ -174,6 +209,12 @@ def main():
         help="Pseudocount added to predicted CPM before log2FC (default: 1.0)",
     )
     parser.add_argument(
+        "--dataset",
+        choices=DATASETS,
+        default="base",
+        help="Dataset namespace to benchmark (default: base).",
+    )
+    parser.add_argument(
         "--save-output",
         action="store_true",
         help="Save per-peak predicted and observed values to CSV",
@@ -188,7 +229,7 @@ def main():
         "--log2fc-threshold",
         type=float,
         default=1.5,
-        help="Max pairwise |log2FC| threshold defining pairwise DA peaks (default: 2.0)",
+        help="Max pairwise |log2FC| threshold defining pairwise DA peaks (default: 1.5)",
     )
     parser.add_argument("-b", "--batch-size", type=int, default=64)
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -202,14 +243,20 @@ def main():
     variant = resolve_model_variant(args)
     model_subdir = variant["model_subdir"]
     adapter_id = variant["adapter_id"]
+    pseudobulks = read_pseudobulks(args.dataset)
+    observed_da_path = da_path(args.dataset)
+    models_root = model_root(args.dataset)
 
     # Load observed DA values
-    if not DA_PATH.exists():
-        print(f"Error: da_peaks.csv not found at {DA_PATH}", file=sys.stderr)
-        print("Run differential_accessibility.py first.", file=sys.stderr)
+    if not observed_da_path.exists():
+        print(f"Error: da_peaks.csv not found at {observed_da_path}", file=sys.stderr)
+        print(
+            f"Run differential_accessibility.py --dataset {args.dataset} first.",
+            file=sys.stderr,
+        )
         sys.exit(1)
-    print(f"Loading observed DA values from {DA_PATH}...")
-    da = pd.read_csv(DA_PATH)
+    print(f"Loading observed DA values from {observed_da_path}...")
+    da = pd.read_csv(observed_da_path)
     n_peaks = len(da)
     print(f"  {n_peaks} union peaks")
 
@@ -220,26 +267,25 @@ def main():
 
     model_paths = {
         ps: [
-            REPO_ROOT / "models" / ps / model_subdir / f"{ps}_f{fold}.torch"
+            models_root / ps / model_subdir / f"{ps}_f{fold}.torch"
             for fold in range(n_folds)
         ]
-        for ps in PSEUDOBULKS
+        for ps in pseudobulks
     }
     adapter_paths = (
         {
             ps: [
-                REPO_ROOT
-                / "models"
+                models_root
                 / ps
                 / "adapters"
                 / adapter_id
                 / f"{ps}_f{fold}.adapter.pt"
                 for fold in range(n_folds)
             ]
-            for ps in PSEUDOBULKS
+            for ps in pseudobulks
         }
         if adapter_id is not None
-        else {ps: [None] * n_folds for ps in PSEUDOBULKS}
+        else {ps: [None] * n_folds for ps in pseudobulks}
     )
     for ps, paths in model_paths.items():
         for p in paths:
@@ -269,7 +315,7 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Build out-of-fold predicted count matrix: (n_peaks, n_pseudobulks)
-    pred_counts = np.zeros((n_peaks, len(PSEUDOBULKS)), dtype=np.float32)
+    pred_counts = np.zeros((n_peaks, len(pseudobulks)), dtype=np.float32)
 
     for fold in range(n_folds):
         test_chroms = chrom_splits[str(fold)]
@@ -293,7 +339,7 @@ def main():
         )
         valid_fold_indices = [idx for idx, m in zip(fold_indices, mask.tolist()) if m]
 
-        for j, ps in enumerate(PSEUDOBULKS):
+        for j, ps in enumerate(pseudobulks):
             print(f"  Predicting {ps}...")
             model, _manifest = load_model_with_adapter(
                 model_paths[ps][fold],
@@ -317,13 +363,13 @@ def main():
     pred_cpm = normalize_cpm(pred_counts)
     pred_log2fc = compute_log2fc(pred_cpm, args.pseudocount)
     pred_pair_log2fc, pred_max_log2fc, pred_max_contrast = compute_pairwise_log2fc(
-        pred_cpm, PSEUDOBULKS, args.pseudocount
+        pred_cpm, pseudobulks, args.pseudocount
     )
     pred_tau = compute_tau(pred_cpm)
-    pred_specific_to = np.array([PSEUDOBULKS[i] for i in pred_cpm.argmax(axis=1)])
+    pred_specific_to = np.array([pseudobulks[i] for i in pred_cpm.argmax(axis=1)])
 
     # Extract observed values from da DataFrame
-    obs_log2fc = da[[f"log2fc_{ps}" for ps in PSEUDOBULKS]].values
+    obs_log2fc = da[[f"log2fc_{ps}" for ps in pseudobulks]].values
     obs_pair_log2fc = {
         col: da[col].values
         for col in da.columns
@@ -341,7 +387,7 @@ def main():
 
     # 1. Per-cell-type log2FC correlations (all peaks + tau-filtered peaks)
     log2fc_metrics = {}
-    for i, ps in enumerate(PSEUDOBULKS):
+    for i, ps in enumerate(pseudobulks):
         r_all, rho_all = corr(pred_log2fc[:, i], obs_log2fc[:, i])
         r_tau, rho_tau = corr(pred_log2fc[tau_mask, i], obs_log2fc[tau_mask, i])
         log2fc_metrics[ps] = {
@@ -443,7 +489,7 @@ def main():
         "celltype_tau": {},
         "pairwise_abs_log2fc": {},
     }
-    for i, ps in enumerate(PSEUDOBULKS):
+    for i, ps in enumerate(pseudobulks):
         positives = (tau_mask & (obs_specific_to == ps)).astype(int)
         ranking["celltype_tau"][ps] = ranking_metrics(positives, pred_log2fc[:, i])
     for key, obs_vals in obs_pair_log2fc.items():
@@ -507,14 +553,14 @@ def main():
         "pairwise_filtered": acc_pw,
         "n_tau_filtered": int(tau_mask.sum()),
         "n_pairwise_filtered": int(pairwise_mask.sum()),
-        "baseline": round(1 / len(PSEUDOBULKS), 4),
+        "baseline": round(1 / len(pseudobulks), 4),
     }
 
     # 6. Top-2 specificity accuracy: obs specific_to is within the 2 highest predicted CPM cell types
     top2_pred_indices = np.argsort(pred_cpm, axis=1)[:, -2:]
     in_top2 = np.array(
         [
-            obs in [PSEUDOBULKS[idx] for idx in row]
+            obs in [pseudobulks[idx] for idx in row]
             for obs, row in zip(obs_specific_to, top2_pred_indices)
         ]
     )
@@ -526,7 +572,7 @@ def main():
         "pairwise_filtered": float(in_top2[pairwise_mask].mean())
         if pairwise_mask.any()
         else float("nan"),
-        "baseline": round(2 / len(PSEUDOBULKS), 4),
+        "baseline": round(2 / len(pseudobulks), 4),
     }
 
     # Print summary
@@ -594,13 +640,15 @@ def main():
     )
 
     # Save JSON
-    out_dir = REPO_ROOT / "performance_metrics" / "differential_accessibility"
+    out_dir = da_metrics_dir(args.dataset)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     suffix = variant["suffix"]
 
     results = {
         "n_peaks": n_peaks,
+        "dataset": args.dataset,
+        "pseudobulks": pseudobulks,
         "pseudocount": args.pseudocount,
         "tau_threshold": args.tau_threshold,
         "log2fc_threshold": args.log2fc_threshold,
@@ -637,7 +685,7 @@ def main():
             "obs_max_pairwise_contrast": da["max_pairwise_contrast"].values,
             "pred_max_pairwise_contrast": pred_max_contrast,
         }
-        for i, ps in enumerate(PSEUDOBULKS):
+        for i, ps in enumerate(pseudobulks):
             rows[f"pred_cpm_{ps}"] = pred_cpm[:, i]
             rows[f"obs_log2fc_{ps}"] = obs_log2fc[:, i]
             rows[f"pred_log2fc_{ps}"] = pred_log2fc[:, i]

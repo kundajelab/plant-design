@@ -16,9 +16,10 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-PSEUDOBULKS_PATH = REPO_ROOT / "configs" / "pseudobulks.txt"
+DATASETS = ("base", "fine", "coarse")
 N_FOLDS = 5
 DA_FRACTIONS = (0.5, 0.8)
+PYTHON = ("uv", "run", "--frozen", "python")
 
 RUN_GROUPS = ("full", "adapter")
 DEFAULT_FULL_LR = 1e-4
@@ -50,10 +51,24 @@ def slurm_name(text):
     )
 
 
-def load_pseudobulks(selected):
+def dataset_suffix(dataset):
+    return "" if dataset == "base" else f"_{dataset}"
+
+
+def model_root(dataset):
+    root = REPO_ROOT / "models"
+    return root if dataset == "base" else root / dataset
+
+
+def load_pseudobulks(dataset, selected):
     if selected is not None:
         return selected
-    return [p for p in PSEUDOBULKS_PATH.read_text().splitlines() if p.strip()]
+    path = REPO_ROOT / "configs" / f"pseudobulks{dataset_suffix(dataset)}.txt"
+    return [
+        p.strip()
+        for p in path.read_text().splitlines()
+        if p.strip() and not p.startswith("#")
+    ]
 
 
 def common_training_args(args, lr):
@@ -76,8 +91,10 @@ def common_training_args(args, lr):
 def build_full_job(args, pseudobulk, fold, da_fraction):
     script = REPO_ROOT / "src" / "chrombpnet" / "da_finetuning" / "finetune_da.py"
     command = [
-        "python",
+        *PYTHON,
         script,
+        "--dataset",
+        args.dataset,
         "-p",
         pseudobulk,
         "-f",
@@ -90,8 +107,7 @@ def build_full_job(args, pseudobulk, fold, da_fraction):
         "-v",
     ]
     finish_path = (
-        REPO_ROOT
-        / "models"
+        model_root(args.dataset)
         / pseudobulk
         / full_tag(da_fraction)
         / f"{pseudobulk}_f{fold}.log"
@@ -108,8 +124,10 @@ def build_adapter_job(args, pseudobulk, fold, da_fraction):
     script = REPO_ROOT / "src" / "chrombpnet" / "da_finetuning" / "finetune_da.py"
     run_id = default_adapter_run_id(da_fraction)
     command = [
-        "python",
+        *PYTHON,
         script,
+        "--dataset",
+        args.dataset,
         "-p",
         pseudobulk,
         "-f",
@@ -122,8 +140,7 @@ def build_adapter_job(args, pseudobulk, fold, da_fraction):
         "-v",
     ]
     finish_path = (
-        REPO_ROOT
-        / "models"
+        model_root(args.dataset)
         / pseudobulk
         / "adapters"
         / run_id
@@ -138,7 +155,7 @@ def build_adapter_job(args, pseudobulk, fold, da_fraction):
 
 
 def build_jobs(args):
-    pseudobulks = load_pseudobulks(args.pseudobulk)
+    pseudobulks = load_pseudobulks(args.dataset, args.pseudobulk)
     folds = args.fold if args.fold is not None else list(range(N_FOLDS))
     da_fractions = args.da_fraction if args.da_fraction is not None else list(DA_FRACTIONS)
 
@@ -195,7 +212,7 @@ def submit_jobs(args, jobs):
             skipped_finished_jobs += 1
             continue
 
-        job_name = slurm_name(f"da_ft_{run_group}_{pseudobulk}_f{fold}")
+        job_name = slurm_name(f"da_ft_{args.dataset}_{run_group}_{pseudobulk}_f{fold}")
         command_text = "\n".join(commands)
         if args.scheduler_gpus is None:
             run_block = "\n".join(f"time {cmd}" for cmd in commands)
@@ -222,7 +239,7 @@ def submit_jobs(args, jobs):
 #SBATCH --error={log_dir}/{job_name}.err
 
 source ~/bs.sh
-mamba activate torch
+mamba activate plant-design
 export NUMBA_NUM_THREADS={args.numba_threads}
 nvidia-smi -L
 
@@ -267,6 +284,12 @@ def main():
         help="Run group to submit; repeatable. Default: all groups.",
     )
     parser.add_argument("--pseudobulk", action="append", default=None)
+    parser.add_argument(
+        "--dataset",
+        choices=DATASETS,
+        default="base",
+        help="Dataset namespace to finetune (default: base).",
+    )
     parser.add_argument("--fold", type=int, action="append", default=None)
     parser.add_argument("--da-fraction", type=float, action="append", default=None)
     parser.add_argument(
@@ -325,6 +348,16 @@ def main():
 
     if args.run is None:
         args.run = list(RUN_GROUPS)
+    choices = load_pseudobulks(args.dataset, None)
+    selected = args.pseudobulk or choices
+    unknown = [p for p in selected if p not in choices]
+    if unknown:
+        print(
+            f"Error: unknown pseudobulk(s) for dataset '{args.dataset}': "
+            f"{', '.join(unknown)}. Choose one of: {', '.join(choices)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     jobs = build_jobs(args)
     if args.check_finished:

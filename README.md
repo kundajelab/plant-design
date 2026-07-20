@@ -129,17 +129,28 @@ Build the union peak set, extract observed accessibility counts, and compute DA
 specificity metrics:
 
 ```bash
-python src/data_preprocessing/differential_accessibility.py
+uv run python src/data_preprocessing/differential_accessibility.py
+uv run python src/data_preprocessing/differential_accessibility.py --dataset coarse
+uv run python src/data_preprocessing/differential_accessibility.py --dataset fine
 ```
 
-Outputs are written under `data/peaks/differential_accessibility/` and are
-required for DA benchmarking and adapter fine-tuning.
+Outputs are written under the matching peaks namespace:
+
+```text
+data/peaks/differential_accessibility/
+data/peaks_coarse/differential_accessibility/
+data/peaks_fine/differential_accessibility/
+```
+
+These outputs are required for DA benchmarking and adapter fine-tuning.
 
 Evaluate whether out-of-fold model predictions recover observed cell-type
 specificity:
 
 ```bash
 uv run python src/chrombpnet/benchmark/benchmark_da.py [--save-output]
+uv run python src/chrombpnet/benchmark/benchmark_da.py --dataset coarse [--save-output]
+uv run python src/chrombpnet/benchmark/benchmark_da.py --dataset fine [--save-output]
 uv run python src/chrombpnet/benchmark/benchmark_da.py --adapter --da-fraction 0.8
 ```
 
@@ -149,10 +160,14 @@ The original DA fine-tuning path updates the full accessibility submodel while
 keeping the bias model frozen:
 
 ```bash
-python src/chrombpnet/da_finetuning/finetune_da.py -p <pseudobulk> -f <fold> -v
+uv run python src/chrombpnet/da_finetuning/finetune_da.py -p <pseudobulk> -f <fold> -v
+uv run python src/chrombpnet/da_finetuning/finetune_da.py \
+    --dataset coarse -p <pseudobulk> -f <fold> -v
 ```
 
 Fine-tuned models are saved under `models/<pseudobulk>/finetuned/`.
+For `--dataset coarse` or `--dataset fine`, outputs are saved under
+`models/coarse/<pseudobulk>/...` or `models/fine/<pseudobulk>/...`.
 Use `--da-fraction 0.8` to save the 80:20 DA replay run under
 `models/<pseudobulk>/finetuned_0.8/`.
 
@@ -169,10 +184,10 @@ uses the daicon BPNet defaults selected from the parameter sweep: all BPNet
 layers, `conv_rank=16`, `linear_rank=4`, dropout `0`, and alpha-8 scaling.
 
 ```bash
-python src/chrombpnet/da_finetuning/finetune_da.py \
+uv run python src/chrombpnet/da_finetuning/finetune_da.py \
     -p <pseudobulk> -f <fold> --mode adapter --da-fraction 0.5 -v
 
-python src/chrombpnet/da_finetuning/finetune_da.py \
+uv run python src/chrombpnet/da_finetuning/finetune_da.py \
     -p <pseudobulk> -f <fold> --mode adapter --da-fraction 0.8 -v
 ```
 
@@ -200,9 +215,14 @@ with both 0.5 and 0.8 DA fractions by default. Adapter fine-tuning uses
 `--adapter-lr 0.001` by default:
 
 ```bash
-python src/chrombpnet/da_finetuning/launch.py --dry-run
+uv run python src/chrombpnet/da_finetuning/launch.py --dry-run
 
-python src/chrombpnet/da_finetuning/launch.py \
+uv run python src/chrombpnet/da_finetuning/launch.py \
+    --run full \
+    --run adapter
+
+uv run python src/chrombpnet/da_finetuning/launch.py \
+    --dataset coarse \
     --run full \
     --run adapter
 ```
@@ -212,18 +232,18 @@ SLURM job per pseudobulk/fold and uses the final `.log.tsv` as the completion
 marker:
 
 ```bash
-python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
+uv run python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
     --config configs/adapter_sweeps/smoke.json \
     --dry-run
 
-python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
+uv run python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
     --config configs/adapter_sweeps/smoke.json
 ```
 
 Check finished adapter jobs:
 
 ```bash
-python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
+uv run python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
     --config configs/adapter_sweeps/smoke.json \
     --check-finished
 ```

@@ -222,7 +222,7 @@ def main():
                     adapter_flags = f" --adapter-sweep-id {adapter_id}"
                 da_peaks_flag = f" --da-peaks {args.da_peaks}" if args.da_peaks is not None else ""
                 deepliftshap_cmd = (
-                    f"python {script_path}"
+                    f"uv run python {script_path}"
                     f" -p {pseudobulk}"
                     f" --dataset {args.dataset}"
                     f" -m {model_type}"
@@ -249,18 +249,8 @@ def main():
                     #SBATCH --output={log_dir}/{job_name}.out
                     #SBATCH --error={log_dir}/{job_name}.err
 
-                    ml openblas/0.3.28
-                    ml xsimd/8.1.0
-                    ml xz/5.8.1
-                    ml hdf5/1.14.4
-                    ml arrow/22.0.0
-                    ml load py-pyarrow/18.1.0_py312
-                    ml lz4/1.8.0
-                    ml biology
-                    ml htslib
-                    ml ucsc-utils
-
-                    mamba activate torch
+                    source ~/bs.sh
+                    mamba activate plant-design
                     nvidia-smi -L
 
                     time {deepliftshap_cmd}
