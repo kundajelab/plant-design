@@ -254,89 +254,10 @@ uv run python src/chrombpnet/benchmark/select_best_lora_model.py \
 
 ### 10. Attribution
 
-First, filter peaks to remove any containing non-ACGT characters, then save one-hot-encoded sequences:
+Attribution and tf-MoDISco now have directory-local runbooks instead of
+catch-all command scripts:
 
-```bash
-export REPO_ROOT="$(pwd)"
-for pseudobulk in "bundle_sheath" "epidermis" "guard" "mesophyll" "phloem" "xylem"; do
-    python src/chrombpnet/attribute/filter_nonACGT_regions.py -v \
-        -f "${REPO_ROOT}/data/Sbicolor_730_v5.0.fa" \
-        -b "${REPO_ROOT}/data/peaks/${pseudobulk}_peaks.narrowPeak" \
-        -o "${REPO_ROOT}/data/peaks/${pseudobulk}_peaks_ACGT.narrowPeak"
-done
-
-for pseudobulk in "bundle_sheath" "epidermis" "guard" "mesophyll" "phloem" "xylem"; do
-    python src/chrombpnet/attribute/save_ohe.py -v -p ${pseudobulk}
-done
-```
-
-Then compute DeepLIFT/SHAP hypothetical attributions on a SLURM cluster:
-
-```bash
-python src/chrombpnet/attribute/launch.py --model accessibility
-```
-
-`launch.py` submits one SLURM job per pseudobulk, model type, and head.
-Attributions are saved under `attributions/chrombpnet/`, and one-hot-encoded
-sequences to `attributions/chrombpnet/`.
-
-Default daicon adapter attribution is supported through the attribution launcher:
-
-```bash
-python src/chrombpnet/attribute/launch.py \
-    --model accessibility \
-    --adapter \
-    --da-fraction 0.5
-
-python src/chrombpnet/attribute/launch.py \
-    --model accessibility \
-    --adapter \
-    --da-fraction 0.8
-```
-
-Custom adapter sweep/run attribution is supported by passing the trained adapter
-run ID through the attribution launcher or DeepLIFT script:
-
-```bash
-python src/chrombpnet/attribute/deepliftshap.py \
-    -p <pseudobulk> \
-    -m accessibility \
-    --head profile \
-    --adapter-run-id <adapter_id>
-```
-
-`daicon` adapters are compatible with tangermeme DeepLIFT/SHAP in evaluation
-mode because the adapter branches are affine residual additions over frozen
-`Conv1d`/`Linear` layers. Dropout may be used during training but is disabled
-with `model.eval()` during attribution.
-
-Run tf-modisco on attribution outputs and generate reports:
-
-```bash
-python src/chrombpnet/modisco/launch.py --model accessibility
-python src/chrombpnet/modisco/launch_report.py --model accessibility
-```
-
-Default daicon adapter tf-modisco runs use the same adapter selectors:
-
-```bash
-python src/chrombpnet/modisco/launch.py \
-    --model accessibility \
-    --adapter \
-    --da-fraction 0.5
-
-python src/chrombpnet/modisco/launch.py \
-    --model accessibility \
-    --adapter \
-    --da-fraction 0.8
-
-python src/chrombpnet/modisco/launch_report.py \
-    --model accessibility \
-    --adapter \
-    --da-fraction 0.5
-
-python src/chrombpnet/modisco/launch_report.py \
-    --model accessibility \
-    --adapter \
-    --da-fraction 0.8
-```
+- `src/chrombpnet/attribute/README.md`: peak filtering, OHE extraction, and
+  DeepLIFT/SHAP launch commands for base/fine/coarse and DA-specific runs.
+- `src/chrombpnet/modisco/README.md`: motif discovery and report launch
+  commands for base, finetuned, adapter, and DA-specific attribution outputs.
