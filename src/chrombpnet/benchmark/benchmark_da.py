@@ -10,8 +10,8 @@ da_peaks.csv.
 Requires da_peaks.csv to already exist (run differential_accessibility.py first).
 
 Usage:
-    python src/chrombpnet/benchmark/benchmark_da.py
-    python src/chrombpnet/benchmark/benchmark_da.py --save-output --finetuned
+    uv run python src/chrombpnet/benchmark/benchmark_da.py
+    uv run python src/chrombpnet/benchmark/benchmark_da.py --save-output --finetuned
 """
 
 import argparse

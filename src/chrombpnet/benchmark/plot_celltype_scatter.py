@@ -13,10 +13,10 @@ Requires:
     (run differential_accessibility.py and benchmark_da.py --save-output first)
 
 Usage:
-    python src/chrombpnet/benchmark/plot_celltype_scatter.py
-    python src/chrombpnet/benchmark/plot_celltype_scatter.py --finetuned
-    python src/chrombpnet/benchmark/plot_celltype_scatter.py --finetuned --da-fraction 0.8
-    python src/chrombpnet/benchmark/plot_celltype_scatter.py --out-dir results/plots
+    uv run python src/chrombpnet/benchmark/plot_celltype_scatter.py
+    uv run python src/chrombpnet/benchmark/plot_celltype_scatter.py --finetuned
+    uv run python src/chrombpnet/benchmark/plot_celltype_scatter.py --finetuned --da-fraction 0.8
+    uv run python src/chrombpnet/benchmark/plot_celltype_scatter.py --out-dir results/plots
 """
 
 import argparse
@@ -145,7 +145,7 @@ def main():
             print(f"Error: {label} not found: {path}", file=sys.stderr)
             if "benchmark_peaks" in str(path):
                 print(
-                    "Run: python src/chrombpnet/benchmark/benchmark_da.py --save-output"
+                    "Run: uv run python src/chrombpnet/benchmark/benchmark_da.py --save-output"
                     + (" --finetuned" if args.finetuned else "")
                     + (
                         f" --adapter-sweep-id {args.adapter_sweep_id}"
@@ -172,7 +172,7 @@ def main():
         print(
             f"Error: {peaks_path.name} is missing pred_cpm_* columns.\n"
             "Re-run benchmark_da.py with --save-output to regenerate it:\n"
-            "  python src/chrombpnet/benchmark/benchmark_da.py --save-output"
+            "  uv run python src/chrombpnet/benchmark/benchmark_da.py --save-output"
             + (" --finetuned" if args.finetuned else "")
             + (
                 f" --adapter-sweep-id {args.adapter_sweep_id}"

@@ -21,6 +21,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 BENCHMARK_DIR = REPO_ROOT / "src" / "chrombpnet" / "benchmark"
 DATASETS = ("base", "fine", "coarse")
+PYTHON = ("uv", "run", "python")
 
 
 @dataclass(frozen=True)
@@ -150,7 +151,7 @@ def build_variant_job(args, variant):
             skipped += 1
             continue
         cmd = [
-            "python",
+            *PYTHON,
             BENCHMARK_DIR / "benchmark.py",
             "--dataset",
             args.dataset,
@@ -179,7 +180,7 @@ def build_variant_job(args, variant):
     )
     if not da_done or args.rerun:
         cmd = [
-            "python",
+            *PYTHON,
             BENCHMARK_DIR / "benchmark_da.py",
             "-b",
             args.batch_size,
@@ -198,7 +199,7 @@ def build_variant_job(args, variant):
             " ".join(
                 shlex.quote(str(part))
                 for part in [
-                    "python",
+                    *PYTHON,
                     BENCHMARK_DIR / "pairwise_correlations_predicted.py",
                     *variant.flags,
                 ]
@@ -237,7 +238,7 @@ def make_sbatch_script(args, job, log_dir):
 #SBATCH --error={log_dir}/{job["job_name"]}.err
 
 source ~/bs.sh
-mamba activate torch
+mamba activate plant-design
 export NUMBA_NUM_THREADS={args.numba_threads}
 nvidia-smi -L
 
@@ -311,7 +312,7 @@ def main():
     parser.add_argument(
         "--interactive",
         action="store_true",
-        help="Print missing benchmark python commands without sbatch wrappers.",
+        help="Print missing uv run benchmark commands without sbatch wrappers.",
     )
     parser.add_argument("--save-cross-outputs", action="store_true")
     parser.add_argument(

@@ -9,7 +9,7 @@ jobs, rather than one job per output file.
 Use launch.py for the active benchmark path.
 
 Plot finished outputs with:
-    python src/chrombpnet/benchmark/plot_lora_sweep.py --sweep-id <sweep_id>
+    uv run python src/chrombpnet/benchmark/plot_lora_sweep.py --sweep-id <sweep_id>
 """
 
 import argparse
@@ -21,6 +21,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 BENCHMARK_DIR = REPO_ROOT / "src" / "chrombpnet" / "benchmark"
+PYTHON = ("uv", "run", "python")
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
 REFERENCE_MODELS = {
     "base": {
@@ -88,7 +89,7 @@ def reference_job(args, model_id, spec):
             skipped += 1
             continue
         cmd = [
-            "python",
+            *PYTHON,
             BENCHMARK_DIR / "benchmark.py",
             "-p",
             pseudobulk,
@@ -108,7 +109,7 @@ def reference_job(args, model_id, spec):
     )
     if not da_done or args.rerun:
         cmd = [
-            "python",
+            *PYTHON,
             BENCHMARK_DIR / "benchmark_da.py",
             "-b",
             args.batch_size,
@@ -127,7 +128,7 @@ def reference_job(args, model_id, spec):
             " ".join(
                 shlex.quote(str(part))
                 for part in [
-                    "python",
+                    *PYTHON,
                     BENCHMARK_DIR / "pairwise_correlations_predicted.py",
                     *spec["flags"],
                 ]
@@ -155,7 +156,7 @@ def adapter_job(args, sweep_id):
             skipped += 1
             continue
         cmd = [
-            "python",
+            *PYTHON,
             BENCHMARK_DIR / "benchmark.py",
             "-p",
             pseudobulk,
@@ -185,7 +186,7 @@ def adapter_job(args, sweep_id):
     da_done = da_json.exists() and (not args.save_da_outputs or da_peaks.exists())
     if not da_done or args.rerun:
         cmd = [
-            "python",
+            *PYTHON,
             BENCHMARK_DIR / "benchmark_da.py",
             "--adapter-sweep-id",
             sweep_id,
@@ -212,7 +213,7 @@ def adapter_job(args, sweep_id):
             " ".join(
                 shlex.quote(str(part))
                 for part in [
-                    "python",
+                    *PYTHON,
                     BENCHMARK_DIR / "pairwise_correlations_predicted.py",
                     "--adapter-sweep-id",
                     sweep_id,
@@ -252,7 +253,7 @@ def make_sbatch_script(args, job, log_dir):
 #SBATCH --error={log_dir}/{job["job_name"]}.err
 
 source ~/bs.sh
-mamba activate torch
+mamba activate plant-design
 export NUMBA_NUM_THREADS={args.numba_threads}
 nvidia-smi -L
 
@@ -315,7 +316,7 @@ def main():
     parser.add_argument(
         "--interactive",
         action="store_true",
-        help="Print missing benchmark python commands without sbatch wrappers.",
+        help="Print missing uv run benchmark commands without sbatch wrappers.",
     )
     parser.add_argument("--save-cross-outputs", action="store_true")
     parser.add_argument(

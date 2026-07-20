@@ -23,6 +23,7 @@ dependencies = [
     "pybigtools==0.2.5",
     "pyfaidx",
     "pyyaml",
+    "scikit-learn",
     "scipy",
     "seaborn",
     "tangermeme>=1.4.0",

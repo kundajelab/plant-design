@@ -9,9 +9,9 @@ each pseudobulk JSON). DA benchmark metrics are computed over all held-out
 peaks jointly, so no per-fold breakdown is available there.
 
 Usage:
-    python src/chrombpnet/benchmark/plot_benchmark.py
-    python src/chrombpnet/benchmark/plot_benchmark.py --pseudobulks mesophyll guard
-    python src/chrombpnet/benchmark/plot_benchmark.py --out-dir results/plots
+    uv run python src/chrombpnet/benchmark/plot_benchmark.py
+    uv run python src/chrombpnet/benchmark/plot_benchmark.py --pseudobulks mesophyll guard
+    uv run python src/chrombpnet/benchmark/plot_benchmark.py --out-dir results/plots
 """
 
 import argparse

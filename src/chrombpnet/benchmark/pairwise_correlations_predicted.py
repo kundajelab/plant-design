@@ -4,8 +4,8 @@ regions across all pseudobulks. Predictions come from each fold's model applied
 to its held-out test chromosomes, so every peak is predicted out-of-fold.
 
 Usage:
-    python src/chrombpnet/benchmark/pairwise_correlations_predicted.py
-    python src/chrombpnet/benchmark/pairwise_correlations_predicted.py --finetuned
+    uv run python src/chrombpnet/benchmark/pairwise_correlations_predicted.py
+    uv run python src/chrombpnet/benchmark/pairwise_correlations_predicted.py --finetuned
 """
 
 import argparse

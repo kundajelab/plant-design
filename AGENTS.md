@@ -62,7 +62,7 @@ uv run python src/chrombpnet/benchmark/benchmark.py -p <pseudobulk> [-o]
 python src/data_preprocessing/differential_accessibility.py
 
 # 9. Benchmark DA predictions
-python src/chrombpnet/benchmark/benchmark_da.py
+uv run python src/chrombpnet/benchmark/benchmark_da.py
 
 # 10. Finetune on DA peaks (one process per fold, e.g. one per GPU)
 for fold in 0 1 2 3 4; do

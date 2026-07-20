@@ -414,6 +414,8 @@ def write_summary_and_plots(args, sweep_ids):
             run_command(
                 " ".join(
                     [
+                        "uv",
+                        "run",
                         "python",
                         str(BENCHMARK_DIR / "plot_celltype_scatter.py"),
                         "--adapter-sweep-id",

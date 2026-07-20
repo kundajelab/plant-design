@@ -139,8 +139,8 @@ Evaluate whether out-of-fold model predictions recover observed cell-type
 specificity:
 
 ```bash
-python src/chrombpnet/benchmark/benchmark_da.py [--save-output]
-python src/chrombpnet/benchmark/benchmark_da.py --adapter --da-fraction 0.8
+uv run python src/chrombpnet/benchmark/benchmark_da.py [--save-output]
+uv run python src/chrombpnet/benchmark/benchmark_da.py --adapter --da-fraction 0.8
 ```
 
 ### 8. Full-model DA fine-tuning
@@ -232,23 +232,23 @@ Benchmark the active model set (base, both full-finetuned models, and both
 default daicon adapter models):
 
 ```bash
-python src/chrombpnet/benchmark/launch.py --dry-run
-python src/chrombpnet/benchmark/launch.py
+uv run python src/chrombpnet/benchmark/launch.py --dry-run
+uv run python src/chrombpnet/benchmark/launch.py
 ```
 
 Summarize and plot the active model benchmark outputs:
 
 ```bash
-python src/chrombpnet/benchmark/plot_benchmark.py
+uv run python src/chrombpnet/benchmark/plot_benchmark.py
 ```
 
 The LoRA sweep benchmark and selection scripts are development-only utilities
 for choosing adapter hyperparameters:
 
 ```bash
-python src/chrombpnet/benchmark/benchmark_lora_sweep.py --sweep-id <sweep_id>
-python src/chrombpnet/benchmark/plot_lora_sweep.py --sweep-id <sweep_id>
-python src/chrombpnet/benchmark/select_best_lora_model.py \
+uv run python src/chrombpnet/benchmark/benchmark_lora_sweep.py --sweep-id <sweep_id>
+uv run python src/chrombpnet/benchmark/plot_lora_sweep.py --sweep-id <sweep_id>
+uv run python src/chrombpnet/benchmark/select_best_lora_model.py \
     --summary performance_metrics/plots/lora_sweep/lora_sweep_summary.csv
 ```
 
