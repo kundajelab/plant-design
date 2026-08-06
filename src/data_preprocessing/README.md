@@ -72,6 +72,8 @@ Use TMM normalization instead of CPM scaling with `--tmm`:
 uv run python src/data_preprocessing/differential_accessibility.py --dataset coarse --tmm
 ```
 
+For our `coarse` analyses, we use `--tmm --tau-threshold 0.7`; for the baseline models, we used `--tmm --tau-threshold 0.75`.
+
 ## Pairwise-Higher BEDs
 
 `differential_accessibility.py` writes the standard DA BED sets automatically.
