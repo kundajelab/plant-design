@@ -35,7 +35,14 @@ dependencies = [
 
 [project.optional-dependencies]
 hub = ["huggingface-hub"]
-cherimoya = ["cherimoya"]
+# cherimoya>=0.2.0 requires torch>=2.9, which conflicts with this project's
+# pinned torch==2.6.0 (needed by bpnet-lite/daicon/tangermeme). This extra is
+# declared for documentation only; `uv sync --extra cherimoya` cannot resolve
+# it here. Install cherimoya in a separate environment (e.g. the training
+# machine/container) instead.
+cherimoya = [
+    "cherimoya>=0.2.0",
+]
 # MotifCompendium and personal_bpnet are external/local research dependencies
 # until resolvable install sources are confirmed.
 # Metaformer / promoterai-torch is still in development and will be added

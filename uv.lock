@@ -1535,6 +1535,7 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "joblib" },
     { name = "ledidi" },
+    { name = "leidenalg" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas" },
@@ -1553,22 +1554,12 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-bpnet = [
-    { name = "bpnet-lite" },
-    { name = "leidenalg" },
-]
 cherimoya = [
     { name = "cherimoya", version = "0.0.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or sys_platform == 'linux'" },
     { name = "cherimoya", version = "0.1.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'arm64' and sys_platform == 'darwin') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
-    { name = "leidenalg" },
 ]
 hub = [
     { name = "huggingface-hub" },
-]
-plot = [
-    { name = "matplotlib" },
-    { name = "pillow" },
-    { name = "seaborn" },
 ]
 
 [package.dev-dependencies]
@@ -1585,34 +1576,29 @@ notebook = [
 requires-dist = [
     { name = "bam2bw" },
     { name = "bpnet-lite" },
-    { name = "bpnet-lite", marker = "extra == 'bpnet'" },
     { name = "cherimoya", marker = "extra == 'cherimoya'" },
     { name = "daicon" },
     { name = "huggingface-hub" },
     { name = "huggingface-hub", marker = "extra == 'hub'" },
     { name = "joblib" },
     { name = "ledidi" },
-    { name = "leidenalg", marker = "extra == 'bpnet'", specifier = "==0.10.2" },
-    { name = "leidenalg", marker = "extra == 'cherimoya'", specifier = "==0.10.2" },
+    { name = "leidenalg", specifier = "==0.10.2" },
     { name = "matplotlib" },
-    { name = "matplotlib", marker = "extra == 'plot'" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pillow" },
-    { name = "pillow", marker = "extra == 'plot'" },
     { name = "pybigtools", specifier = "==0.2.5" },
     { name = "pyfaidx" },
     { name = "pyyaml" },
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "seaborn" },
-    { name = "seaborn", marker = "extra == 'plot'" },
     { name = "tangermeme", specifier = ">=1.4.0" },
     { name = "torch", marker = "sys_platform != 'linux'" },
     { name = "torch", marker = "sys_platform == 'linux'", specifier = "==2.6.0" },
     { name = "tqdm" },
 ]
-provides-extras = ["plot", "hub", "bpnet", "cherimoya"]
+provides-extras = ["hub", "cherimoya"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest" }]
