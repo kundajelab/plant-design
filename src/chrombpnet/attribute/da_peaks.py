@@ -1,6 +1,10 @@
 """Utilities for ChromBPNet DA peak attribution inputs."""
 
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+import species_config
 
 DATASETS = ("base", "fine", "coarse")
 DA_PEAK_CHOICES = ["tau", "pairwise", "pairwise_higher", "specific_union"]
@@ -11,9 +15,9 @@ def da_suffix(da_peaks):
     return f"_da_{da_peaks}" if da_peaks is not None else ""
 
 
-def resolve_da_bed(repo_root, da_peaks, pseudobulk):
+def resolve_da_bed(species, da_peaks, pseudobulk):
     """Resolve a DA peak-set name to the BED path used for a pseudobulk."""
-    da_dir = Path(repo_root) / "data" / "peaks" / "differential_accessibility"
+    da_dir = species_config.data_dir(species) / "peaks" / "differential_accessibility"
     if da_peaks == "tau":
         return da_dir / "da_peaks_tau.bed"
     if da_peaks == "pairwise":
@@ -25,51 +29,43 @@ def resolve_da_bed(repo_root, da_peaks, pseudobulk):
     raise ValueError(f"unknown DA peak set: {da_peaks}")
 
 
-def model_dir(repo_root, dataset, pseudobulk):
-    root = Path(repo_root) / "models"
+def model_dir(species, dataset, pseudobulk):
+    root = species_config.models_dir(species)
     if dataset != "base":
         root = root / dataset
     return root / pseudobulk
 
 
-def read_pseudobulks(repo_root, dataset):
-    suffix = "" if dataset == "base" else f"_{dataset}"
-    path = Path(repo_root) / "configs" / f"pseudobulks{suffix}.txt"
-    return [
-        line.strip()
-        for line in path.read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    ]
+def read_pseudobulks(species, dataset):
+    return species_config.read_pseudobulks(species, dataset)
 
 
-def validate_pseudobulk(repo_root, dataset, pseudobulk):
-    choices = read_pseudobulks(repo_root, dataset)
+def validate_pseudobulk(species, dataset, pseudobulk):
+    choices = read_pseudobulks(species, dataset)
     if pseudobulk not in choices:
         raise ValueError(
-            f"unknown pseudobulk '{pseudobulk}' for dataset '{dataset}'. "
-            f"Choose one of: {', '.join(choices)}"
+            f"unknown pseudobulk '{pseudobulk}' for species '{species}', "
+            f"dataset '{dataset}'. Choose one of: {', '.join(choices)}"
         )
 
 
-def resolve_loci_path(repo_root, pseudobulk, da_peaks=None, dataset="base"):
+def resolve_loci_path(species, pseudobulk, da_peaks=None, dataset="base"):
     """Resolve all-peaks or DA-peaks loci path for a pseudobulk."""
     if da_peaks is None:
         suffix = "" if dataset == "base" else f"_{dataset}"
         return (
-            Path(repo_root)
-            / "data"
+            species_config.data_dir(species)
             / f"peaks{suffix}"
             / f"{pseudobulk}_peaks_ACGT.narrowPeak"
         )
-    return resolve_da_bed(repo_root, da_peaks, pseudobulk)
+    return resolve_da_bed(species, da_peaks, pseudobulk)
 
 
-def resolve_ohe_path(repo_root, pseudobulk, da_peaks=None, dataset="base"):
+def resolve_ohe_path(species, pseudobulk, da_peaks=None, dataset="base"):
     """Resolve the OHE npz path matching a pseudobulk and optional DA peak set."""
     subdir = "chrombpnet" if dataset == "base" else f"chrombpnet_{dataset}"
     return (
-        Path(repo_root)
-        / "attributions"
+        species_config.attributions_dir(species)
         / subdir
         / f"{pseudobulk}_ohe{da_suffix(da_peaks)}.npz"
     )

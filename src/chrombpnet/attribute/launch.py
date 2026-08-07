@@ -38,8 +38,10 @@ from da_peaks import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "src" / "chrombpnet" / "benchmark"))
 
+import species_config  # noqa: E402
 from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
 
 N_FOLDS = 5
@@ -49,6 +51,7 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
+    species_config.add_species_arg(parser)
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -109,6 +112,7 @@ def main():
     parser.add_argument("--mem", type=str, default="64G")
     parser.add_argument("--time", type=str, default="48:00:00")
     args = parser.parse_args()
+    species = species_config.resolve_species(args.species)
     variant = resolve_model_variant(args)
     fine_tag = variant["fine_tag"]
     model_subdir = variant["model_subdir"]
@@ -141,10 +145,10 @@ def main():
         if not model_types:
             sys.exit(0)
 
-    pseudobulks = read_pseudobulks(REPO_ROOT, args.dataset)
+    pseudobulks = read_pseudobulks(species, args.dataset)
 
-    attr_dir = REPO_ROOT / "attributions"
-    log_dir = REPO_ROOT / "logs" / "chrombpnet_deepliftshap"
+    attr_dir = species_config.attributions_dir(species)
+    log_dir = species_config.logs_dir(species) / "chrombpnet_deepliftshap"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     submitted = 0
@@ -153,7 +157,7 @@ def main():
 
     for pseudobulk in pseudobulks:
         peaks_path = resolve_loci_path(
-            REPO_ROOT, pseudobulk, args.da_peaks, dataset=args.dataset
+            species, pseudobulk, args.da_peaks, dataset=args.dataset
         )
         if not peaks_path.exists():
             skipped_missing += len(model_types) * len(heads)
@@ -164,7 +168,7 @@ def main():
             continue
 
         for model_type in model_types:
-            model_dir = dataset_model_dir(REPO_ROOT, args.dataset, pseudobulk) / model_subdir
+            model_dir = dataset_model_dir(species, args.dataset, pseudobulk) / model_subdir
             model_paths = [
                 model_dir / f"{pseudobulk}_f{fold}.{model_type}.torch"
                 for fold in range(N_FOLDS)
@@ -179,8 +183,7 @@ def main():
                 continue
             if adapter_id is not None:
                 adapter_paths = [
-                    REPO_ROOT
-                    / dataset_model_dir(REPO_ROOT, args.dataset, pseudobulk).relative_to(REPO_ROOT)
+                    dataset_model_dir(species, args.dataset, pseudobulk)
                     / "adapters"
                     / adapter_id
                     / f"{pseudobulk}_f{fold}.adapter.pt"
@@ -223,6 +226,7 @@ def main():
                 da_peaks_flag = f" --da-peaks {args.da_peaks}" if args.da_peaks is not None else ""
                 deepliftshap_cmd = (
                     f"uv run python {script_path}"
+                    f" --species {species}"
                     f" -p {pseudobulk}"
                     f" --dataset {args.dataset}"
                     f" -m {model_type}"

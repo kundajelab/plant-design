@@ -29,16 +29,15 @@ from da_peaks import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "src" / "chrombpnet" / "benchmark"))
 
+import species_config  # noqa: E402
 from daicon import (  # noqa: E402
     iter_adapters,
     load_accessibility_with_adapter,
 )
 from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
-
-CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
-FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
 
 
 def assert_deeplift_shap_compatible(module):
@@ -57,6 +56,7 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
+    species_config.add_species_arg(parser)
     parser.add_argument(
         "-p",
         "--pseudobulk",
@@ -105,9 +105,10 @@ def main():
         adapter_help="Use default daicon adapter bundles for the selected DA fraction",
     )
     args = parser.parse_args()
+    species = species_config.resolve_species(args.species)
     variant = resolve_model_variant(args)
     try:
-        validate_pseudobulk(REPO_ROOT, args.dataset, args.pseudobulk)
+        validate_pseudobulk(species, args.dataset, args.pseudobulk)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -137,13 +138,13 @@ def main():
         sys.exit(1)
 
     # Load chrom splits
-    with open(CHROM_SPLITS_PATH, "r") as f:
+    with open(species_config.config_dir(species) / "chrom_splits.json", "r") as f:
         chrom_splits = json.load(f)
     n_folds = len(chrom_splits)
 
     # Construct data paths and verify that they exist.
     if args.da_peaks is not None:
-        peaks_path = resolve_loci_path(REPO_ROOT, args.pseudobulk, args.da_peaks)
+        peaks_path = resolve_loci_path(species, args.pseudobulk, args.da_peaks)
         if not peaks_path.exists():
             print(
                 f"Error: {peaks_path.name} not found: {peaks_path}. "
@@ -153,14 +154,14 @@ def main():
             sys.exit(1)
     else:
         peaks_path = resolve_loci_path(
-            REPO_ROOT, args.pseudobulk, None, dataset=args.dataset
+            species, args.pseudobulk, None, dataset=args.dataset
         )
         if not Path(peaks_path).exists():
             print(f"Error: peaks not found: {peaks_path}", file=sys.stderr)
             sys.exit(1)
 
     # Resolve model directory and verify that all models exist
-    model_dir = dataset_model_dir(REPO_ROOT, args.dataset, args.pseudobulk) / model_subdir
+    model_dir = dataset_model_dir(species, args.dataset, args.pseudobulk) / model_subdir
     model_paths = [
         model_dir / f"{args.pseudobulk}_f{fold}.{args.model_type}.torch"
         for fold in range(n_folds)
@@ -170,8 +171,7 @@ def main():
             print(f"Error: model not found: {model_path}", file=sys.stderr)
             sys.exit(1)
     adapter_paths = [
-        REPO_ROOT
-        / dataset_model_dir(REPO_ROOT, args.dataset, args.pseudobulk).relative_to(REPO_ROOT)
+        dataset_model_dir(species, args.dataset, args.pseudobulk)
         / "adapters"
         / adapter_id
         / f"{args.pseudobulk}_f{fold}.adapter.pt"
@@ -184,7 +184,7 @@ def main():
 
     # Build params with defaults, then apply CLI overrides
     params = {
-        "sequences": FASTA,
+        "sequences": str(species_config.genome_fasta(species)),
         "loci": str(peaks_path),
         "in_window": 2114,
         "batch_size": 64,
@@ -248,7 +248,7 @@ def main():
     else:
         base_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
     out_subdir = base_subdir if args.dataset == "base" else f"{base_subdir}_{args.dataset}"
-    out_dir = REPO_ROOT / "attributions" / out_subdir
+    out_dir = species_config.attributions_dir(species) / out_subdir
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Save attributions

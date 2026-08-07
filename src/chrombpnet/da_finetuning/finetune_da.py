@@ -46,10 +46,11 @@ from daicon import (  # noqa: E402
 from torch.utils.data import DataLoader
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+import species_config
+
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
 DATASETS = ("base", "fine", "coarse")
-FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
-CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 IN_WINDOW = 2114
 OUT_WINDOW = 1000
 DEFAULT_ADAPTER_TARGETS = "all"
@@ -62,27 +63,17 @@ def dataset_suffix(dataset):
     return "" if dataset == "base" else f"_{dataset}"
 
 
-def read_pseudobulks(dataset):
-    suffix = dataset_suffix(dataset)
-    path = REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
-    return [
-        line.strip()
-        for line in path.read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    ]
+def data_subdir(species, name, dataset):
+    return species_config.data_dir(species) / f"{name}{dataset_suffix(dataset)}"
 
 
-def data_subdir(name, dataset):
-    return REPO_ROOT / "data" / f"{name}{dataset_suffix(dataset)}"
-
-
-def model_root(dataset):
-    root = REPO_ROOT / "models"
+def model_root(species, dataset):
+    root = species_config.models_dir(species)
     return root if dataset == "base" else root / dataset
 
 
-def da_dir(dataset):
-    return data_subdir("peaks", dataset) / "differential_accessibility"
+def da_dir(species, dataset):
+    return data_subdir(species, "peaks", dataset) / "differential_accessibility"
 
 
 def da_fraction_tag(da_fraction):
@@ -206,12 +197,12 @@ class MixedFinetuneDataset(torch.utils.data.Dataset):
         return self._rc(X, y)
 
 
-def load_da_peaks(dataset):
+def load_da_peaks(species, dataset):
     """Load and deduplicate DA peaks from tau and pairwise BED files."""
     frames = []
     for path in (
-        da_dir(dataset) / "da_peaks_tau.bed",
-        da_dir(dataset) / "da_peaks_pairwise.bed",
+        da_dir(species, dataset) / "da_peaks_tau.bed",
+        da_dir(species, dataset) / "da_peaks_pairwise.bed",
     ):
         if not path.exists():
             print(
@@ -237,9 +228,9 @@ def load_da_peaks(dataset):
     )
 
 
-def load_ct_peaks(ps, dataset):
+def load_ct_peaks(species, ps, dataset):
     """Load cell-type–specific peaks as a chrom/start/end DataFrame."""
-    path = data_subdir("peaks", dataset) / f"{ps}_peaks.narrowPeak"
+    path = data_subdir(species, "peaks", dataset) / f"{ps}_peaks.narrowPeak"
     if not path.exists():
         print(f"Error: peaks file not found: {path}", file=sys.stderr)
         sys.exit(1)
@@ -262,11 +253,12 @@ def peaks_to_narrowpeak(df, tmp_file):
     np_df.to_csv(tmp_file, sep="\t", header=False, index=False)
 
 
-def extract_split(loci_df, bw_path, chroms, jitter, verbose):
+def extract_split(fasta, loci_df, bw_path, chroms, jitter, verbose):
     """Extract sequences and signal for loci on the given chromosomes.
 
     Parameters
     ----------
+    fasta : str, path to reference genome FASTA
     loci_df : DataFrame with columns [chrom, start, end]
     bw_path : str, path to bigwig signal file
     chroms : list of str, chromosome names to include
@@ -296,7 +288,7 @@ def extract_split(loci_df, bw_path, chroms, jitter, verbose):
     try:
         X, y, mask = extract_loci(
             loci=tmp_path,
-            sequences=FASTA,
+            sequences=fasta,
             signals=[bw_path],
             in_window=padded_in,
             out_window=padded_out,
@@ -499,6 +491,7 @@ def build_parser():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
+    species_config.add_species_arg(parser)
     parser.add_argument(
         "-p",
         "--pseudobulk",
@@ -613,11 +606,12 @@ def build_parser():
 def parse_args(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
-    pseudobulks = read_pseudobulks(args.dataset)
+    species = species_config.resolve_species(args.species)
+    pseudobulks = species_config.read_pseudobulks(species, args.dataset)
     if args.pseudobulk not in pseudobulks:
         parser.error(
-            f"unknown pseudobulk '{args.pseudobulk}' for dataset '{args.dataset}'. "
-            f"Choose one of: {', '.join(pseudobulks)}"
+            f"unknown pseudobulk '{args.pseudobulk}' for species '{species}', "
+            f"dataset '{args.dataset}'. Choose one of: {', '.join(pseudobulks)}"
         )
     if args.adapter_run_id is None:
         args.adapter_run_id = default_adapter_run_id(args.da_fraction)
@@ -626,28 +620,31 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
+    species = species_config.resolve_species(args.species)
 
     ps = args.pseudobulk
     fold = args.fold
-    root = model_root(args.dataset)
-    bw_path = str(data_subdir("bigwigs", args.dataset) / f"{ps}.bw")
+    root = model_root(species, args.dataset)
+    bw_path = str(data_subdir(species, "bigwigs", args.dataset) / f"{ps}.bw")
     if not Path(bw_path).exists():
         print(f"Error: bigwig not found: {bw_path}", file=sys.stderr)
         sys.exit(1)
 
-    with open(CHROM_SPLITS_PATH) as f:
+    fasta = str(species_config.genome_fasta(species))
+    chrom_splits_path = species_config.config_dir(species) / "chrom_splits.json"
+    with open(chrom_splits_path) as f:
         chrom_splits = json.load(f)
 
     if str(fold) not in chrom_splits:
-        print(f"Error: fold {fold} not found in {CHROM_SPLITS_PATH}", file=sys.stderr)
+        print(f"Error: fold {fold} not found in {chrom_splits_path}", file=sys.stderr)
         sys.exit(1)
 
     print("Loading DA peaks...")
-    da_peaks = load_da_peaks(args.dataset)
+    da_peaks = load_da_peaks(species, args.dataset)
     print(f"  {len(da_peaks)} unique DA peaks (tau + pairwise)")
 
     print(f"Loading cell-type peaks for {ps}...")
-    ct_peaks = load_ct_peaks(ps, args.dataset)
+    ct_peaks = load_ct_peaks(species, ps, args.dataset)
     print(f"  {len(ct_peaks)} cell-type peaks")
 
     if args.mode == "adapter":
@@ -707,7 +704,7 @@ def main(argv=None):
 
     # --- Load nonpeaks ---
     nonpeak_path = (
-        data_subdir("nonpeaks", args.dataset) / f"{ps}_fold_{fold}_negatives.bed"
+        data_subdir(species, "nonpeaks", args.dataset) / f"{ps}_fold_{fold}_negatives.bed"
     )
     if not nonpeak_path.exists():
         print(f"Error: nonpeaks not found: {nonpeak_path}", file=sys.stderr)
@@ -724,14 +721,14 @@ def main(argv=None):
     print("  Extracting training data...")
 
     X_da_tr, y_da_tr, _ = extract_split(
-        da_peaks, bw_path, train_chroms, jitter=args.jitter, verbose=args.verbose
+        fasta, da_peaks, bw_path, train_chroms, jitter=args.jitter, verbose=args.verbose
     )
     X_ct_tr, y_ct_tr, _ = extract_split(
-        ct_peaks, bw_path, train_chroms, jitter=args.jitter, verbose=args.verbose
+        fasta, ct_peaks, bw_path, train_chroms, jitter=args.jitter, verbose=args.verbose
     )
     # Nonpeaks: no jitter — extracted at IN_WINDOW / OUT_WINDOW directly
     X_np_tr, y_np_tr, _ = extract_split(
-        nonpeaks, bw_path, train_chroms, jitter=0, verbose=args.verbose
+        fasta, nonpeaks, bw_path, train_chroms, jitter=0, verbose=args.verbose
     )
 
     if X_da_tr is None:
@@ -765,7 +762,7 @@ def main(argv=None):
     # --- Extract validation data (DA peaks on test chroms, no jitter) ---
     print("  Extracting validation data...")
     X_valid, y_valid, _ = extract_split(
-        da_peaks, bw_path, test_chroms, jitter=0, verbose=args.verbose
+        fasta, da_peaks, bw_path, test_chroms, jitter=0, verbose=args.verbose
     )
 
     if X_valid is None:

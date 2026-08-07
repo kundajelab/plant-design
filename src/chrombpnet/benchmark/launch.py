@@ -19,6 +19,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+import species_config
+
 BENCHMARK_DIR = REPO_ROOT / "src" / "chrombpnet" / "benchmark"
 DATASETS = ("base", "fine", "coarse")
 PYTHON = ("uv", "run", "--frozen", "python")
@@ -29,6 +32,7 @@ class Variant:
     name: str
     label: str
     flags: tuple[str, ...]
+    # Paths below are relative to performance_metrics_dir(species).
     cross_dir: Path
     da_path: Path
     pairwise_path: Path
@@ -39,14 +43,9 @@ def adapter_variant(name, label, run_id, da_fraction):
         name=name,
         label=label,
         flags=("--adapter", "--da-fraction", str(da_fraction)),
-        cross_dir=REPO_ROOT / "performance_metrics" / "adapters" / run_id,
-        da_path=REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / f"da_benchmark_adapter_{run_id}.json",
-        pairwise_path=REPO_ROOT
-        / "performance_metrics"
-        / "adapters"
+        cross_dir=Path("adapters") / run_id,
+        da_path=Path("differential_accessibility") / f"da_benchmark_adapter_{run_id}.json",
+        pairwise_path=Path("adapters")
         / run_id
         / f"pairwise_correlations_predicted_adapter_{run_id}.json",
     )
@@ -57,34 +56,25 @@ VARIANTS = {
         name="base",
         label="Base",
         flags=(),
-        cross_dir=REPO_ROOT / "performance_metrics" / "chrombpnet",
-        da_path=REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / "da_benchmark.json",
-        pairwise_path=REPO_ROOT / "performance_metrics" / "pairwise_correlations_predicted.json",
+        cross_dir=Path("chrombpnet"),
+        da_path=Path("differential_accessibility") / "da_benchmark.json",
+        pairwise_path=Path("pairwise_correlations_predicted.json"),
     ),
     "finetuned": Variant(
         name="finetuned",
         label="Finetuned 50:50",
         flags=("--finetuned",),
-        cross_dir=REPO_ROOT / "performance_metrics" / "chrombpnet_finetuned",
-        da_path=REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / "da_benchmark_finetuned.json",
-        pairwise_path=REPO_ROOT / "performance_metrics" / "pairwise_correlations_predicted_finetuned.json",
+        cross_dir=Path("chrombpnet_finetuned"),
+        da_path=Path("differential_accessibility") / "da_benchmark_finetuned.json",
+        pairwise_path=Path("pairwise_correlations_predicted_finetuned.json"),
     ),
     "finetuned_0.8": Variant(
         name="finetuned_0.8",
         label="Finetuned 80:20",
         flags=("--finetuned", "--da-fraction", "0.8"),
-        cross_dir=REPO_ROOT / "performance_metrics" / "chrombpnet_finetuned_0.8",
-        da_path=REPO_ROOT
-        / "performance_metrics"
-        / "differential_accessibility"
-        / "da_benchmark_finetuned_0.8.json",
-        pairwise_path=REPO_ROOT / "performance_metrics" / "pairwise_correlations_predicted_finetuned_0.8.json",
+        cross_dir=Path("chrombpnet_finetuned_0.8"),
+        da_path=Path("differential_accessibility") / "da_benchmark_finetuned_0.8.json",
+        pairwise_path=Path("pairwise_correlations_predicted_finetuned_0.8.json"),
     ),
     "adapter": adapter_variant(
         "adapter",
@@ -110,28 +100,14 @@ def slurm_name(text):
     )
 
 
-def read_pseudobulks(dataset):
-    suffix = "" if dataset == "base" else f"_{dataset}"
-    path = REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
-    return [
-        line.strip()
-        for line in path.read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    ]
-
-
-def existing_cross_path(dataset_name, variant, pseudobulk):
-    metrics_subdir = variant.cross_dir.relative_to(REPO_ROOT / "performance_metrics")
-    path = (
-        REPO_ROOT
-        / "performance_metrics"
-        / (
-            metrics_subdir
-            if dataset_name == "base"
-            else f"{metrics_subdir}_{dataset_name}"
-        )
-        / f"{pseudobulk}.json"
+def existing_cross_path(species, dataset_name, variant, pseudobulk):
+    metrics_root = species_config.performance_metrics_dir(species)
+    metrics_subdir = (
+        variant.cross_dir
+        if dataset_name == "base"
+        else Path(f"{variant.cross_dir}_{dataset_name}")
     )
+    path = metrics_root / metrics_subdir / f"{pseudobulk}.json"
     return path if path.exists() else None
 
 
@@ -139,13 +115,13 @@ def dataset_suffix(dataset_name):
     return "" if dataset_name == "base" else f"_{dataset_name}"
 
 
-def existing_da_path(dataset_name, variant):
+def existing_da_path(species, dataset_name, variant):
+    metrics_root = species_config.performance_metrics_dir(species)
     if dataset_name == "base":
-        path = variant.da_path
+        path = metrics_root / variant.da_path
     else:
         path = (
-            REPO_ROOT
-            / "performance_metrics"
+            metrics_root
             / f"differential_accessibility{dataset_suffix(dataset_name)}"
             / variant.da_path.name
         )
@@ -158,18 +134,23 @@ def benchmark_da_peaks_path(da_path):
     )
 
 
-def build_variant_job(args, variant):
+def build_variant_job(args, species, variant):
     cross = []
     serial = []
     skipped = 0
 
     for pseudobulk in args.pseudobulks:
-        if existing_cross_path(args.dataset, variant, pseudobulk) is not None and not args.rerun:
+        if (
+            existing_cross_path(species, args.dataset, variant, pseudobulk) is not None
+            and not args.rerun
+        ):
             skipped += 1
             continue
         cmd = [
             *PYTHON,
             BENCHMARK_DIR / "benchmark.py",
+            "--species",
+            species,
             "--dataset",
             args.dataset,
             "-p",
@@ -184,7 +165,7 @@ def build_variant_job(args, variant):
             cmd.append("-v")
         cross.append(" ".join(shlex.quote(str(part)) for part in cmd))
 
-    da_path = existing_da_path(args.dataset, variant)
+    da_path = existing_da_path(species, args.dataset, variant)
     da_done = da_path is not None and (
         not args.save_da_outputs or benchmark_da_peaks_path(da_path).exists()
     )
@@ -192,6 +173,8 @@ def build_variant_job(args, variant):
         cmd = [
             *PYTHON,
             BENCHMARK_DIR / "benchmark_da.py",
+            "--species",
+            species,
             "--dataset",
             args.dataset,
             "-b",
@@ -214,13 +197,16 @@ def build_variant_job(args, variant):
             "skipped": skipped,
         }
 
-    if not variant.pairwise_path.exists() or args.rerun:
+    pairwise_path = species_config.performance_metrics_dir(species) / variant.pairwise_path
+    if not pairwise_path.exists() or args.rerun:
         serial.append(
             " ".join(
                 shlex.quote(str(part))
                 for part in [
                     *PYTHON,
                     BENCHMARK_DIR / "pairwise_correlations_predicted.py",
+                    "--species",
+                    species,
                     *variant.flags,
                 ]
             )
@@ -308,6 +294,7 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
+    species_config.add_species_arg(parser)
     parser.add_argument(
         "--variant",
         action="append",
@@ -352,18 +339,19 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
-    choices = read_pseudobulks(args.dataset)
+    species = species_config.resolve_species(args.species)
+    choices = species_config.read_pseudobulks(species, args.dataset)
     args.pseudobulks = args.pseudobulks or choices
     for pseudobulk in args.pseudobulks:
         if pseudobulk not in choices:
             print(
-                f"Error: unknown pseudobulk '{pseudobulk}' for dataset '{args.dataset}'. "
-                f"Choose one of: {', '.join(choices)}",
+                f"Error: unknown pseudobulk '{pseudobulk}' for species '{species}', "
+                f"dataset '{args.dataset}'. Choose one of: {', '.join(choices)}",
                 file=sys.stderr,
             )
             sys.exit(1)
     variant_names = args.variant or (["base"] if args.dataset != "base" else list(VARIANTS))
-    jobs = [build_variant_job(args, VARIANTS[name]) for name in variant_names]
+    jobs = [build_variant_job(args, species, VARIANTS[name]) for name in variant_names]
     submit_jobs(args, jobs)
 
 

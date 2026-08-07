@@ -14,6 +14,9 @@ from slurm_launcher import (
     submit_jobs,
 )
 
+sys.path.insert(0, str(REPO_ROOT / "src"))
+import species_config
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -23,10 +26,11 @@ def parse_args():
 
 def main():
     args = parse_args()
-    pseudobulks, folds = resolve_dataset_and_jobs(args)
-    log_dir = REPO_ROOT / "logs" / "chrombpnet_accessibility"
+    species, pseudobulks, folds = resolve_dataset_and_jobs(args)
+    log_dir = species_config.logs_dir(species) / "chrombpnet_accessibility"
     dataset_suffix = "" if args.dataset == "base" else f"_{args.dataset}"
-    model_root = REPO_ROOT / "models"
+    data_dir = species_config.data_dir(species)
+    model_root = species_config.models_dir(species)
     if args.dataset != "base":
         model_root = model_root / args.dataset
 
@@ -59,25 +63,21 @@ def main():
                 "cli.py",
                 "train",
                 "-bw",
-                REPO_ROOT / "data" / f"bigwigs{dataset_suffix}" / f"{pseudobulk}.bw",
+                data_dir / f"bigwigs{dataset_suffix}" / f"{pseudobulk}.bw",
                 "-d",
                 "ATAC",
                 "-g",
-                REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa",
+                species_config.genome_fasta(species),
                 "-c",
-                REPO_ROOT / "data" / "Sbicolor_730_v5.0.chrom.sizes",
+                species_config.chrom_sizes(species),
                 "-p",
-                REPO_ROOT
-                / "data"
-                / f"peaks{dataset_suffix}"
-                / f"{pseudobulk}_peaks.narrowPeak",
+                data_dir / f"peaks{dataset_suffix}" / f"{pseudobulk}_peaks.narrowPeak",
                 "-n",
-                REPO_ROOT
-                / "data"
+                data_dir
                 / f"nonpeaks{dataset_suffix}"
                 / f"{pseudobulk}_fold_{fold}_negatives.bed",
                 "-fl",
-                REPO_ROOT / "configs" / f"fold_{fold}.json",
+                species_config.fold_path(species, fold),
                 "-b",
                 model_root / pseudobulk / f"bias_f{fold}" / "models" / f"f{fold}_bias.h5",
                 "-o",

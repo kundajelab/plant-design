@@ -23,28 +23,18 @@ from tangermeme.predict import predict
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
+import species_config  # noqa: E402
 from daicon import load_model_with_adapter  # noqa: E402
 from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
 
-CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
-FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
 DATASETS = ("base", "fine", "coarse")
-
-
-def read_pseudobulks(dataset):
-    suffix = "" if dataset == "base" else f"_{dataset}"
-    path = REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
-    return [
-        line.strip()
-        for line in path.read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    ]
 
 
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
+    species_config.add_species_arg(parser)
     parser.add_argument(
         "-p",
         "--pseudobulk",
@@ -73,12 +63,13 @@ def main():
     )
     args = parser.parse_args()
 
+    species = species_config.resolve_species(args.species)
     variant = resolve_model_variant(args)
-    if args.pseudobulk not in read_pseudobulks(args.dataset):
-        choices = ", ".join(read_pseudobulks(args.dataset))
+    if args.pseudobulk not in species_config.read_pseudobulks(species, args.dataset):
+        choices = ", ".join(species_config.read_pseudobulks(species, args.dataset))
         print(
-            f"Error: unknown pseudobulk '{args.pseudobulk}' for dataset '{args.dataset}'. "
-            f"Choose one of: {choices}",
+            f"Error: unknown pseudobulk '{args.pseudobulk}' for species '{species}', "
+            f"dataset '{args.dataset}'. Choose one of: {choices}",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -87,25 +78,21 @@ def main():
     metrics_subdir = variant["metrics_subdir"]
     predictions_subdir = variant["predictions_subdir"]
     dataset_suffix = "" if args.dataset == "base" else f"_{args.dataset}"
-    model_root = REPO_ROOT / "models"
+    data_dir = species_config.data_dir(species)
+    model_root = species_config.models_dir(species)
     if args.dataset != "base":
         model_root = model_root / args.dataset
 
     # Load chrom splits
-    with open(CHROM_SPLITS_PATH, "r") as f:
+    with open(species_config.config_dir(species) / "chrom_splits.json", "r") as f:
         chrom_splits = json.load(f)
     n_folds = len(chrom_splits)
 
     # Construct data paths and verify that they exist.
     peaks_path = str(
-        REPO_ROOT
-        / "data"
-        / f"peaks{dataset_suffix}"
-        / f"{args.pseudobulk}_peaks.narrowPeak"
+        data_dir / f"peaks{dataset_suffix}" / f"{args.pseudobulk}_peaks.narrowPeak"
     )
-    bw_path = str(
-        REPO_ROOT / "data" / f"bigwigs{dataset_suffix}" / f"{args.pseudobulk}.bw"
-    )
+    bw_path = str(data_dir / f"bigwigs{dataset_suffix}" / f"{args.pseudobulk}.bw")
     for path, label in [(peaks_path, "peaks"), (bw_path, "bigwig")]:
         if not Path(path).exists():
             print(f"Error: {label} not found: {path}", file=sys.stderr)
@@ -138,7 +125,7 @@ def main():
             sys.exit(1)
 
     params = {
-        "sequences": FASTA,
+        "sequences": str(species_config.genome_fasta(species)),
         "signals": [bw_path],
         "loci": peaks_path,
         "in_window": 2114,
@@ -241,6 +228,7 @@ def main():
     # Save metrics to JSON
     metrics = {
         "pseudobulk": args.pseudobulk,
+        "species": species,
         "dataset": args.dataset,
         "per_fold": {
             str(fold): {
@@ -258,10 +246,8 @@ def main():
             "counts_spearman": counts_spearman_all,
         },
     }
-    metrics_dir = (
-        REPO_ROOT
-        / "performance_metrics"
-        / (metrics_subdir if args.dataset == "base" else f"{metrics_subdir}_{args.dataset}")
+    metrics_dir = species_config.performance_metrics_dir(species) / (
+        metrics_subdir if args.dataset == "base" else f"{metrics_subdir}_{args.dataset}"
     )
     metrics_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = metrics_dir / f"{args.pseudobulk}.json"
@@ -270,14 +256,10 @@ def main():
     print(f"\nMetrics saved to {metrics_path}")
 
     if args.save_output:
-        output_dir = (
-            REPO_ROOT
-            / "predictions"
-            / (
-                predictions_subdir
-                if args.dataset == "base"
-                else f"{predictions_subdir}_{args.dataset}"
-            )
+        output_dir = species_config.predictions_dir(species) / (
+            predictions_subdir
+            if args.dataset == "base"
+            else f"{predictions_subdir}_{args.dataset}"
         )
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / f"{args.pseudobulk}.npz"

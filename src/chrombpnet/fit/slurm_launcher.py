@@ -12,6 +12,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 SCRIPT_DIR = Path(__file__).resolve().parent
 
+sys.path.insert(0, str(REPO_ROOT / "src"))
+import species_config
+
 DATASET_NAMES = ("base", "fine", "coarse")
 
 
@@ -22,6 +25,7 @@ def add_common_args(
     default_time: str,
     default_gpus: int = 1,
 ) -> None:
+    species_config.add_species_arg(parser)
     parser.add_argument(
         "--dataset",
         choices=DATASET_NAMES,
@@ -83,32 +87,25 @@ def add_common_args(
     )
 
 
-def read_pseudobulks(dataset: str) -> list[str]:
-    suffix = "" if dataset == "base" else f"_{dataset}"
-    path = REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
-    return [
-        line.strip()
-        for line in path.read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    ]
-
-
-def validate_pseudobulk(dataset: str, pseudobulk: str) -> None:
-    choices = read_pseudobulks(dataset)
+def validate_pseudobulk(species: str, dataset: str, pseudobulk: str) -> None:
+    choices = species_config.read_pseudobulks(species, dataset)
     if pseudobulk not in choices:
         joined = ", ".join(choices)
         raise SystemExit(
-            f"Error: unknown pseudobulk '{pseudobulk}' for dataset '{dataset}'. "
-            f"Choose one of: {joined}"
+            f"Error: unknown pseudobulk '{pseudobulk}' for species '{species}', "
+            f"dataset '{dataset}'. Choose one of: {joined}"
         )
 
 
 def resolve_dataset_and_jobs(args: argparse.Namespace):
-    pseudobulks = args.pseudobulks or read_pseudobulks(args.dataset)
+    species = species_config.resolve_species(args.species)
+    pseudobulks = args.pseudobulks or species_config.read_pseudobulks(
+        species, args.dataset
+    )
     folds = args.folds or list(range(5))
     for pseudobulk in pseudobulks:
-        validate_pseudobulk(args.dataset, pseudobulk)
-    return pseudobulks, folds
+        validate_pseudobulk(species, args.dataset, pseudobulk)
+    return species, pseudobulks, folds
 
 
 def cleanup_then_run(cleanup_paths: list[str | Path], command: list[str | Path]):

@@ -24,21 +24,19 @@ from tangermeme.predict import predict
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
+import species_config  # noqa: E402
 from daicon import load_model_with_adapter  # noqa: E402
 from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
 
-PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
-FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
-CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 IN_WINDOW = 2114
 OUT_WINDOW = 1000
 
 
-def build_merged_union_peaks():
+def build_merged_union_peaks(data_dir, pseudobulks):
     """Load all pseudobulk peaks and merge overlapping intervals."""
     frames = []
-    for ps in PSEUDOBULKS:
-        path = REPO_ROOT / f"data/peaks/{ps}_peaks.narrowPeak"
+    for ps in pseudobulks:
+        path = data_dir / "peaks" / f"{ps}_peaks.narrowPeak"
         if not path.exists():
             raise FileNotFoundError(f"Peaks file not found: {path}")
         frames.append(pd.read_csv(path, sep="\t", header=None))
@@ -70,6 +68,7 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
+    species_config.add_species_arg(parser)
     add_model_variant_args(
         parser,
         finetuned_help="Use finetuned models from models/{pseudobulk}/finetuned/ instead of torch/",
@@ -77,36 +76,40 @@ def main():
     )
     args = parser.parse_args()
 
+    species = species_config.resolve_species(args.species)
+    pseudobulks = species_config.read_pseudobulks(species)
+    data_dir = species_config.data_dir(species)
+    models_root = species_config.models_dir(species)
+
     variant = resolve_model_variant(args)
     model_subdir = variant["model_subdir"]
     adapter_id = variant["adapter_id"]
     suffix = variant["suffix"]
 
-    with open(CHROM_SPLITS_PATH) as f:
+    with open(species_config.config_dir(species) / "chrom_splits.json") as f:
         chrom_splits = json.load(f)
     n_folds = len(chrom_splits)
 
     # Verify models exist
     model_paths = {
         ps: [
-            REPO_ROOT / "models" / ps / model_subdir / f"{ps}_f{fold}.torch"
+            models_root / ps / model_subdir / f"{ps}_f{fold}.torch"
             for fold in range(n_folds)
         ]
-        for ps in PSEUDOBULKS
+        for ps in pseudobulks
     }
     adapter_paths = {
         ps: [
-            REPO_ROOT
-            / "models"
+            models_root
             / ps
             / "adapters"
             / adapter_id
             / f"{ps}_f{fold}.adapter.pt"
             for fold in range(n_folds)
         ]
-        for ps in PSEUDOBULKS
+        for ps in pseudobulks
     } if adapter_id is not None else {
-        ps: [None] * n_folds for ps in PSEUDOBULKS
+        ps: [None] * n_folds for ps in pseudobulks
     }
     for ps, paths in model_paths.items():
         for p in paths:
@@ -120,7 +123,7 @@ def main():
                 sys.exit(1)
 
     print("Building merged union of peak regions...")
-    union = build_merged_union_peaks()
+    union = build_merged_union_peaks(data_dir, pseudobulks)
     print(f"  {len(union)} merged peaks across all pseudobulks")
 
     # Write union to temp narrowPeak file
@@ -131,7 +134,7 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Accumulate out-of-fold predicted counts: (n_peaks, n_pseudobulks)
-    counts_pred = np.zeros((len(union), len(PSEUDOBULKS)), dtype=np.float32)
+    counts_pred = np.zeros((len(union), len(pseudobulks)), dtype=np.float32)
 
     for fold in range(n_folds):
         test_chroms = chrom_splits[str(fold)]
@@ -146,7 +149,7 @@ def main():
 
         X, mask = extract_loci(
             loci=tmp_path,
-            sequences=FASTA,
+            sequences=str(species_config.genome_fasta(species)),
             chroms=test_chroms,
             in_window=IN_WINDOW,
             out_window=OUT_WINDOW,
@@ -156,7 +159,7 @@ def main():
         )
         valid_fold_indices = [idx for idx, m in zip(fold_indices, mask.tolist()) if m]
 
-        for j, ps in enumerate(PSEUDOBULKS):
+        for j, ps in enumerate(pseudobulks):
             print(f"  Predicting {ps}...")
             model, _manifest = load_model_with_adapter(
                 model_paths[ps][fold],
@@ -171,11 +174,11 @@ def main():
     Path(tmp_path).unlink()
 
     # Compute all pairwise Pearson and Spearman correlations
-    pearson = pd.DataFrame(index=PSEUDOBULKS, columns=PSEUDOBULKS, dtype=float)
-    spearman = pd.DataFrame(index=PSEUDOBULKS, columns=PSEUDOBULKS, dtype=float)
+    pearson = pd.DataFrame(index=pseudobulks, columns=pseudobulks, dtype=float)
+    spearman = pd.DataFrame(index=pseudobulks, columns=pseudobulks, dtype=float)
 
-    for i, ps1 in enumerate(PSEUDOBULKS):
-        for j, ps2 in enumerate(PSEUDOBULKS):
+    for i, ps1 in enumerate(pseudobulks):
+        for j, ps2 in enumerate(pseudobulks):
             if i == j:
                 pearson.loc[ps1, ps2] = 1.0
                 spearman.loc[ps1, ps2] = 1.0
@@ -195,9 +198,9 @@ def main():
 
     # Save results
     out_dir = (
-        REPO_ROOT / "performance_metrics" / "adapters" / adapter_id
+        species_config.performance_metrics_dir(species) / "adapters" / adapter_id
         if adapter_id is not None
-        else REPO_ROOT / "performance_metrics"
+        else species_config.performance_metrics_dir(species)
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 

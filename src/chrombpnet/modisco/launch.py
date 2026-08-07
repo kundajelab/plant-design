@@ -33,11 +33,13 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "attribute"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "benchmark"))
-from da_peaks import DA_PEAK_CHOICES, da_suffix, resolve_ohe_path
+from da_peaks import DA_PEAK_CHOICES, da_suffix, read_pseudobulks, resolve_ohe_path
 from model_variants import add_model_variant_args, resolve_model_variant
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-PSEUDOBULKS_PATH = REPO_ROOT / "configs" / "pseudobulks.txt"
+sys.path.insert(0, str(REPO_ROOT / "src"))
+import species_config
+
 JASPAR_PATH = REPO_ROOT / "data" / "JASPAR2026_CORE_plants_non-redundant_pfms_meme.txt"
 
 
@@ -59,6 +61,7 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
+    species_config.add_species_arg(parser)
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -123,6 +126,7 @@ def main():
     parser.add_argument("--mem", type=str, default="64G")
     parser.add_argument("--time", type=str, default="2-00:00:00")
     args = parser.parse_args()
+    species = species_config.resolve_species(args.species)
     variant = resolve_model_variant(args)
     fine_tag = variant["fine_tag"]
     adapter_id = variant["adapter_id"]
@@ -149,12 +153,11 @@ def main():
             sys.exit(0)
 
     # Load pseudobulk list
-    pseudobulks = PSEUDOBULKS_PATH.read_text().splitlines()
-    pseudobulks = [p for p in pseudobulks if p.strip()]
+    pseudobulks = read_pseudobulks(species, "base")
 
-    attr_dir = REPO_ROOT / "attributions" / attr_subdir
-    out_dir = REPO_ROOT / "modisco" / modisco_subdir
-    log_dir = REPO_ROOT / "logs" / "chrombpnet_modisco"
+    attr_dir = species_config.attributions_dir(species) / attr_subdir
+    out_dir = species_config.modisco_dir(species) / modisco_subdir
+    log_dir = species_config.logs_dir(species) / "chrombpnet_modisco"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     submitted = 0
@@ -163,7 +166,7 @@ def main():
     skipped_mismatch = 0
     for pseudobulk in pseudobulks:
         # OHE sequences are shared across model variants but must match the loci set.
-        ohe_path = resolve_ohe_path(REPO_ROOT, pseudobulk, args.da_peaks)
+        ohe_path = resolve_ohe_path(species, pseudobulk, args.da_peaks)
         if not ohe_path.exists():
             skipped_no_attr += len(model_types) * len(heads)
             continue

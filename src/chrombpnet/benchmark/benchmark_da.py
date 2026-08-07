@@ -32,6 +32,7 @@ from tangermeme.predict import predict
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
+import species_config  # noqa: E402
 from daicon import load_model_with_adapter  # noqa: E402
 from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
 
@@ -48,8 +49,6 @@ from differential_accessibility import (
 
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
 DATASETS = ("base", "fine", "coarse")
-FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
-CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
 IN_WINDOW = 2114
 OUT_WINDOW = 1000
 
@@ -58,34 +57,23 @@ def dataset_suffix(dataset):
     return "" if dataset == "base" else f"_{dataset}"
 
 
-def read_pseudobulks(dataset):
-    suffix = dataset_suffix(dataset)
-    path = REPO_ROOT / "configs" / f"pseudobulks{suffix}.txt"
-    return [
-        line.strip()
-        for line in path.read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    ]
-
-
-def da_path(dataset):
+def da_path(species, dataset):
     return (
-        REPO_ROOT
-        / "data"
+        species_config.data_dir(species)
         / f"peaks{dataset_suffix(dataset)}"
         / "differential_accessibility"
         / "da_peaks.csv"
     )
 
 
-def model_root(dataset):
-    root = REPO_ROOT / "models"
+def model_root(species, dataset):
+    root = species_config.models_dir(species)
     return root if dataset == "base" else root / dataset
 
 
-def da_metrics_dir(dataset):
+def da_metrics_dir(species, dataset):
     suffix = dataset_suffix(dataset)
-    return REPO_ROOT / "performance_metrics" / f"differential_accessibility{suffix}"
+    return species_config.performance_metrics_dir(species) / f"differential_accessibility{suffix}"
 
 
 def corr(x, y):
@@ -202,6 +190,7 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
+    species_config.add_species_arg(parser)
     parser.add_argument(
         "--pseudocount",
         type=float,
@@ -240,12 +229,13 @@ def main():
     )
     args = parser.parse_args()
 
+    species = species_config.resolve_species(args.species)
     variant = resolve_model_variant(args)
     model_subdir = variant["model_subdir"]
     adapter_id = variant["adapter_id"]
-    pseudobulks = read_pseudobulks(args.dataset)
-    observed_da_path = da_path(args.dataset)
-    models_root = model_root(args.dataset)
+    pseudobulks = species_config.read_pseudobulks(species, args.dataset)
+    observed_da_path = da_path(species, args.dataset)
+    models_root = model_root(species, args.dataset)
 
     # Load observed DA values
     if not observed_da_path.exists():
@@ -261,7 +251,7 @@ def main():
     print(f"  {n_peaks} union peaks")
 
     # Load chrom splits and verify models
-    with open(CHROM_SPLITS_PATH) as f:
+    with open(species_config.config_dir(species) / "chrom_splits.json") as f:
         chrom_splits = json.load(f)
     n_folds = len(chrom_splits)
 
@@ -329,7 +319,7 @@ def main():
 
         X, mask = extract_loci(
             loci=tmp_path,
-            sequences=FASTA,
+            sequences=str(species_config.genome_fasta(species)),
             chroms=test_chroms,
             in_window=IN_WINDOW,
             out_window=OUT_WINDOW,
@@ -640,13 +630,14 @@ def main():
     )
 
     # Save JSON
-    out_dir = da_metrics_dir(args.dataset)
+    out_dir = da_metrics_dir(species, args.dataset)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     suffix = variant["suffix"]
 
     results = {
         "n_peaks": n_peaks,
+        "species": species,
         "dataset": args.dataset,
         "pseudobulks": pseudobulks,
         "pseudocount": args.pseudocount,

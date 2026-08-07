@@ -14,6 +14,9 @@ from slurm_launcher import (
     submit_jobs,
 )
 
+sys.path.insert(0, str(REPO_ROOT / "src"))
+import species_config
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -35,11 +38,12 @@ def parse_args():
 
 def main():
     args = parse_args()
-    pseudobulks, folds = resolve_dataset_and_jobs(args)
+    species, pseudobulks, folds = resolve_dataset_and_jobs(args)
     dataset_suffix = "" if args.dataset == "base" else f"_{args.dataset}"
-    nonpeaks_dir = REPO_ROOT / "data" / f"nonpeaks{dataset_suffix}"
+    data_dir = species_config.data_dir(species)
+    nonpeaks_dir = data_dir / f"nonpeaks{dataset_suffix}"
     nonpeaks_dir.mkdir(parents=True, exist_ok=True)
-    log_dir = REPO_ROOT / "logs" / "chrombpnet_nonpeaks"
+    log_dir = species_config.logs_dir(species) / "chrombpnet_nonpeaks"
 
     jobs = []
     skipped = 0
@@ -71,18 +75,17 @@ def main():
                     "prep",
                     "nonpeaks",
                     "-g",
-                    REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa",
+                    species_config.genome_fasta(species),
                     "-o",
                     out_prefix,
                     "-p",
-                    REPO_ROOT
-                    / "data"
+                    data_dir
                     / f"peaks{dataset_suffix}"
                     / f"{pseudobulk}_peaks.narrowPeak",
                     "-c",
-                    REPO_ROOT / "data" / "Sbicolor_730_v5.0.chrom.sizes",
+                    species_config.chrom_sizes(species),
                     "-fl",
-                    REPO_ROOT / "configs" / f"fold_{fold}.json",
+                    species_config.fold_path(species, fold),
                     "-npr",
                     args.neg_to_pos_ratio_train,
                 ]
