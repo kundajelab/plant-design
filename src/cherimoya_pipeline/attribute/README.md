@@ -1,7 +1,7 @@
-# ChromBPNet Attribution
+# Cherimoya Attribution
 
-Run these commands from the repository root after ChromBPNet models have been
-converted to PyTorch with `src/chrombpnet/fit/convert_to_torch.py`.
+Run these commands from the repository root after Cherimoya models have been
+trained with `src/cherimoya_pipeline/fit/launch.py`.
 
 Python dependencies are managed by `uv`, so invoke Python entrypoints with
 `uv run python`.
@@ -36,7 +36,7 @@ Filter all-peak BEDs to windows with only A/C/G/T bases.
 ```bash
 while read -r pseudobulk; do
     test -n "${pseudobulk}" || continue
-    uv run python src/chrombpnet/attribute/filter_nonACGT_regions.py -v \
+    uv run python src/cherimoya_pipeline/attribute/filter_nonACGT_regions.py -v \
         -f data/Sbicolor_730_v5.0.fa \
         -b "data/peaks/${pseudobulk}_peaks.narrowPeak" \
         -o "data/peaks/${pseudobulk}_peaks_ACGT.narrowPeak"
@@ -49,7 +49,7 @@ For fine or coarse datasets, change both the config and peak directory:
 dataset=fine
 while read -r pseudobulk; do
     test -n "${pseudobulk}" || continue
-    uv run python src/chrombpnet/attribute/filter_nonACGT_regions.py -v \
+    uv run python src/cherimoya_pipeline/attribute/filter_nonACGT_regions.py -v \
         -f data/Sbicolor_730_v5.0.fa \
         -b "data/peaks_${dataset}/${pseudobulk}_peaks.narrowPeak" \
         -o "data/peaks_${dataset}/${pseudobulk}_peaks_ACGT.narrowPeak"
@@ -65,7 +65,7 @@ peaks_dir="data/peaks"
 
 while read -r pseudobulk; do
     test -n "${pseudobulk}" || continue
-    printf '%q ' uv run python src/chrombpnet/attribute/filter_nonACGT_regions.py -v \
+    printf '%q ' uv run python src/cherimoya_pipeline/attribute/filter_nonACGT_regions.py -v \
         -f data/Sbicolor_730_v5.0.fa \
         -b "${peaks_dir}/${pseudobulk}_peaks.narrowPeak" \
         -o "${peaks_dir}/${pseudobulk}_peaks_ACGT.narrowPeak"
@@ -82,7 +82,7 @@ peaks_dir="data/peaks_${dataset}"
 
 while read -r pseudobulk; do
     test -n "${pseudobulk}" || continue
-    printf '%q ' uv run python src/chrombpnet/attribute/filter_nonACGT_regions.py -v \
+    printf '%q ' uv run python src/cherimoya_pipeline/attribute/filter_nonACGT_regions.py -v \
         -f data/Sbicolor_730_v5.0.fa \
         -b "${peaks_dir}/${pseudobulk}_peaks.narrowPeak" \
         -o "${peaks_dir}/${pseudobulk}_peaks_ACGT.narrowPeak"
@@ -97,7 +97,7 @@ Save one-hot encoded sequence arrays once per pseudobulk before attribution:
 ```bash
 while read -r pseudobulk; do
     test -n "${pseudobulk}" || continue
-    uv run python src/chrombpnet/attribute/save_ohe.py -v -p "${pseudobulk}"
+    uv run python src/cherimoya_pipeline/attribute/save_ohe.py -v -p "${pseudobulk}"
 done < configs/pseudobulks.txt
 ```
 
@@ -107,7 +107,7 @@ For fine or coarse datasets:
 dataset=coarse
 while read -r pseudobulk; do
     test -n "${pseudobulk}" || continue
-    uv run python src/chrombpnet/attribute/save_ohe.py -v \
+    uv run python src/cherimoya_pipeline/attribute/save_ohe.py -v \
         --dataset "${dataset}" \
         -p "${pseudobulk}"
 done < "configs/pseudobulks_${dataset}.txt"
@@ -126,7 +126,7 @@ for per-pseudobulk specificity analyses.
 ```bash
 while read -r pseudobulk; do
     test -n "${pseudobulk}" || continue
-    uv run python src/chrombpnet/attribute/save_ohe.py -v \
+    uv run python src/cherimoya_pipeline/attribute/save_ohe.py -v \
         -p "${pseudobulk}" \
         --da-peaks specific_union
 done < configs/pseudobulks.txt
@@ -139,53 +139,47 @@ Other supported DA peak sets are `tau`, `pairwise`, and `pairwise_higher`.
 All base all-peak attributions:
 
 ```bash
-uv run python src/chrombpnet/attribute/launch.py --model accessibility
+uv run python src/cherimoya_pipeline/attribute/launch.py
 ```
 
 Fine or coarse all-peak attributions:
 
 ```bash
-uv run python src/chrombpnet/attribute/launch.py \
+uv run python src/cherimoya_pipeline/attribute/launch.py \
     --dataset coarse \
-    --model accessibility \
     --time 24:00:00
 ```
 
 Base DA-specific attribution jobs:
 
 ```bash
-uv run python src/chrombpnet/attribute/launch.py \
+uv run python src/cherimoya_pipeline/attribute/launch.py \
     --da-peaks specific_union \
-    --model accessibility \
     --time 6:00:00
 ```
 
 Finetuned and adapter DA-specific runs:
 
 ```bash
-uv run python src/chrombpnet/attribute/launch.py \
+uv run python src/cherimoya_pipeline/attribute/launch.py \
     --da-peaks specific_union \
-    --model accessibility \
     --finetuned \
     --time 6:00:00
 
-uv run python src/chrombpnet/attribute/launch.py \
+uv run python src/cherimoya_pipeline/attribute/launch.py \
     --da-peaks specific_union \
-    --model accessibility \
     --finetuned \
     --da-fraction 0.8 \
     --time 6:00:00
 
-uv run python src/chrombpnet/attribute/launch.py \
+uv run python src/cherimoya_pipeline/attribute/launch.py \
     --da-peaks specific_union \
-    --model accessibility \
     --adapter \
     --da-fraction 0.5 \
     --time 6:00:00
 
-uv run python src/chrombpnet/attribute/launch.py \
+uv run python src/cherimoya_pipeline/attribute/launch.py \
     --da-peaks specific_union \
-    --model accessibility \
     --adapter \
     --da-fraction 0.8 \
     --time 6:00:00

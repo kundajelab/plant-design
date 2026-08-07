@@ -1,6 +1,6 @@
 # Differential Accessibility Finetuning
 
-These scripts fine-tune converted PyTorch ChromBPNet models on DA-enriched
+These scripts fine-tune trained Cherimoya models on DA-enriched
 training sets. Run commands from the repository root with `uv run python`.
 
 ## Inputs
@@ -9,7 +9,7 @@ Run these steps first for the same dataset:
 
 ```bash
 uv run python src/data_preprocessing/differential_accessibility.py --dataset coarse
-uv run python src/chrombpnet/fit/convert_to_torch.py
+uv run python src/cherimoya_pipeline/fit/launch.py --dataset coarse
 ```
 
 Required files:
@@ -20,10 +20,10 @@ configs/fold_0.json ... configs/fold_4.json
 data/Sbicolor_730_v5.0.fa
 data/bigwigs{_dataset}/<pseudobulk>.bw
 data/peaks{_dataset}/<pseudobulk>_peaks.narrowPeak
-data/nonpeaks{_dataset}/<pseudobulk>_fold_<fold>_negatives.bed
+data/negatives{_dataset}/<pseudobulk>_negatives.bed
 data/peaks{_dataset}/differential_accessibility/da_peaks_tau.bed
 data/peaks{_dataset}/differential_accessibility/da_peaks_pairwise.bed
-models/{dataset/}<pseudobulk>/torch/<pseudobulk>_f<fold>.torch
+models/{dataset/}<pseudobulk>/<pseudobulk>_f<fold>.torch
 ```
 
 ## Single Runs
@@ -31,7 +31,7 @@ models/{dataset/}<pseudobulk>/torch/<pseudobulk>_f<fold>.torch
 Full-model fine-tuning:
 
 ```bash
-uv run python src/chrombpnet/da_finetuning/finetune_da.py \
+uv run python src/cherimoya_pipeline/da_finetuning/finetune_da.py \
     --dataset coarse \
     -p mesophyll \
     -f 0 \
@@ -41,7 +41,7 @@ uv run python src/chrombpnet/da_finetuning/finetune_da.py \
 Adapter fine-tuning:
 
 ```bash
-uv run python src/chrombpnet/da_finetuning/finetune_da.py \
+uv run python src/cherimoya_pipeline/da_finetuning/finetune_da.py \
     --dataset coarse \
     -p mesophyll \
     -f 0 \
@@ -51,7 +51,7 @@ uv run python src/chrombpnet/da_finetuning/finetune_da.py \
 The standard DA fractions are `0.5` and `0.8`:
 
 ```bash
-uv run python src/chrombpnet/da_finetuning/finetune_da.py \
+uv run python src/cherimoya_pipeline/da_finetuning/finetune_da.py \
     --dataset fine \
     -p bundle_sheath \
     -f 0 \
@@ -64,15 +64,15 @@ uv run python src/chrombpnet/da_finetuning/finetune_da.py \
 Submit all standard full-model and adapter runs:
 
 ```bash
-uv run python src/chrombpnet/da_finetuning/launch.py
-uv run python src/chrombpnet/da_finetuning/launch.py --dataset coarse
-uv run python src/chrombpnet/da_finetuning/launch.py --dataset fine
+uv run python src/cherimoya_pipeline/da_finetuning/launch.py
+uv run python src/cherimoya_pipeline/da_finetuning/launch.py --dataset coarse
+uv run python src/cherimoya_pipeline/da_finetuning/launch.py --dataset fine
 ```
 
 Limit to one run group, pseudobulk, or fold:
 
 ```bash
-uv run python src/chrombpnet/da_finetuning/launch.py \
+uv run python src/cherimoya_pipeline/da_finetuning/launch.py \
     --dataset coarse \
     --run adapter \
     --pseudobulk mesophyll \
@@ -82,7 +82,7 @@ uv run python src/chrombpnet/da_finetuning/launch.py \
 Print commands for local scheduling:
 
 ```bash
-uv run python src/chrombpnet/da_finetuning/launch.py \
+uv run python src/cherimoya_pipeline/da_finetuning/launch.py \
     --dataset fine \
     --interactive \
     --rerun-finished
@@ -91,7 +91,7 @@ uv run python src/chrombpnet/da_finetuning/launch.py \
 Check expected logs without launching:
 
 ```bash
-uv run python src/chrombpnet/da_finetuning/launch.py \
+uv run python src/cherimoya_pipeline/da_finetuning/launch.py \
     --dataset coarse \
     --check-finished
 ```
@@ -101,7 +101,7 @@ uv run python src/chrombpnet/da_finetuning/launch.py \
 Run a configured adapter sweep:
 
 ```bash
-uv run python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
+uv run python src/cherimoya_pipeline/da_finetuning/launch_adapter_sweep.py \
     --dataset coarse \
     --config configs/adapter_sweeps/smoke.json
 ```
@@ -109,7 +109,7 @@ uv run python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
 Print sweep commands:
 
 ```bash
-uv run python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
+uv run python src/cherimoya_pipeline/da_finetuning/launch_adapter_sweep.py \
     --dataset coarse \
     --interactive \
     --rerun-finished

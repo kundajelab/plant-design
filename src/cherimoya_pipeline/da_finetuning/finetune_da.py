@@ -702,11 +702,11 @@ def main(argv=None):
             param.requires_grad = True
 
     # --- Load nonpeaks ---
-    nonpeak_path = (
-        data_subdir(species, "nonpeaks", args.dataset) / f"{ps}_fold_{fold}_negatives.bed"
-    )
+    # negatives.py samples these genome-wide (not per fold); extract_split's
+    # chroms= filter below restricts them to train_chroms, same as peaks.
+    nonpeak_path = data_subdir(species, "negatives", args.dataset) / f"{ps}_negatives.bed"
     if not nonpeak_path.exists():
-        print(f"Error: nonpeaks not found: {nonpeak_path}", file=sys.stderr)
+        print(f"Error: negatives not found: {nonpeak_path}", file=sys.stderr)
         sys.exit(1)
     nonpeaks = pd.read_csv(
         nonpeak_path,
