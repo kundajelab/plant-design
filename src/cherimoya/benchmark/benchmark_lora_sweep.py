@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-BENCHMARK_DIR = REPO_ROOT / "src" / "chrombpnet" / "benchmark"
+BENCHMARK_DIR = REPO_ROOT / "src" / "cherimoya" / "benchmark"
 PYTHON = ("uv", "run", "python")
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
 REFERENCE_MODELS = {

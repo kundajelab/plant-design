@@ -2,13 +2,33 @@
 
 import sys
 
+from cherimoya import Cherimoya
+from daicon import load_adapter_bundle
+
+
+def load_cherimoya_with_adapter(model_path, adapter_path=None, device="cpu"):
+    """Load a Cherimoya checkpoint, optionally injecting a daicon adapter.
+
+    Cherimoya checkpoints are a config + state_dict bundle (loaded via
+    Cherimoya.load), not a pickled nn.Module like ChromBPNet's -- so this
+    does not go through daicon.load_model_with_adapter, which assumes the
+    latter. Adapters are applied at the model root: Cherimoya has no
+    bias/accessibility submodel split to target.
+    """
+    model = Cherimoya.load(model_path, device=device, compile=False)
+    if adapter_path is None:
+        return model, None
+    return load_adapter_bundle(
+        model, adapter_path, map_location=device, adapter_root=None
+    )
+
 
 def finetuned_tag(da_fraction):
     return "finetuned" if da_fraction == 0.5 else f"finetuned_{da_fraction:g}"
 
 
 def finetuned_metrics_subdir(da_fraction):
-    return f"chrombpnet_{finetuned_tag(da_fraction)}"
+    return f"cherimoya_{finetuned_tag(da_fraction)}"
 
 
 def daicon_adapter_id(da_fraction):
@@ -59,7 +79,9 @@ def resolve_model_variant(args):
     elif args.adapter_sweep_id is not None:
         adapter_id = args.adapter_sweep_id
 
-    model_subdir = fine_tag if args.finetuned else "torch"
+    # Base (non-finetuned) checkpoints are written directly to
+    # models/<species>/<pseudobulk>/ by train_cherimoya.py -- no subdir.
+    model_subdir = fine_tag if args.finetuned else ""
     if adapter_id is not None:
         suffix = f"_adapter_{adapter_id}"
         metrics_subdir = f"adapters/{adapter_id}"
@@ -72,9 +94,9 @@ def resolve_model_variant(args):
         result_tag = fine_tag
     else:
         suffix = ""
-        metrics_subdir = "chrombpnet"
-        predictions_subdir = "chrombpnet"
-        result_tag = "chrombpnet"
+        metrics_subdir = "cherimoya"
+        predictions_subdir = "cherimoya"
+        result_tag = "cherimoya"
 
     return {
         "fine_tag": fine_tag,

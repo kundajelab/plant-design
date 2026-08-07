@@ -4,8 +4,8 @@ regions across all pseudobulks. Predictions come from each fold's model applied
 to its held-out test chromosomes, so every peak is predicted out-of-fold.
 
 Usage:
-    uv run python src/chrombpnet/benchmark/pairwise_correlations_predicted.py
-    uv run python src/chrombpnet/benchmark/pairwise_correlations_predicted.py --finetuned
+    uv run python src/cherimoya/benchmark/pairwise_correlations_predicted.py
+    uv run python src/cherimoya/benchmark/pairwise_correlations_predicted.py --finetuned
 """
 
 import argparse
@@ -25,8 +25,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 import species_config  # noqa: E402
-from daicon import load_model_with_adapter  # noqa: E402
-from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
+from model_variants import (  # noqa: E402
+    add_model_variant_args,
+    load_cherimoya_with_adapter,
+    resolve_model_variant,
+)
 
 IN_WINDOW = 2114
 OUT_WINDOW = 1000
@@ -71,7 +74,7 @@ def main():
     species_config.add_species_arg(parser)
     add_model_variant_args(
         parser,
-        finetuned_help="Use finetuned models from models/{pseudobulk}/finetuned/ instead of torch/",
+        finetuned_help="Use finetuned models from models/{pseudobulk}/finetuned/ instead of the base model",
         adapter_help="Use default daicon adapter bundles for the selected DA fraction",
     )
     args = parser.parse_args()
@@ -161,11 +164,10 @@ def main():
 
         for j, ps in enumerate(pseudobulks):
             print(f"  Predicting {ps}...")
-            model, _manifest = load_model_with_adapter(
+            model, _manifest = load_cherimoya_with_adapter(
                 model_paths[ps][fold],
                 adapter_paths[ps][fold],
-                map_location="cpu",
-                adapter_root="accessibility",
+                device="cpu",
             )
             pred = predict(model=model, X=X, device=device, batch_size=64, verbose=True)
             # pred[1] is log counts; exp to get counts

@@ -1,9 +1,8 @@
-"""Shared helpers for ChromBPNet SLURM training launchers."""
+"""Shared helpers for Cherimoya SLURM training launchers."""
 
 from __future__ import annotations
 
 import argparse
-import os
 import shlex
 import subprocess
 import sys
@@ -77,13 +76,7 @@ def add_common_args(
         "--numba-threads",
         type=int,
         default=None,
-        help="NUMBA_NUM_THREADS for ChromBPNet jobs. Defaults to --cpus-per-task.",
-    )
-    parser.add_argument(
-        "--apptainer-image",
-        type=str,
-        default=os.environ.get("CHROMBPNET_APPTAINER", "chrombpnet.sif"),
-        help="ChromBPNet Apptainer image path. Defaults to $CHROMBPNET_APPTAINER or chrombpnet.sif.",
+        help="NUMBA_NUM_THREADS for Cherimoya jobs. Defaults to --cpus-per-task.",
     )
 
 
@@ -164,6 +157,7 @@ set -euo pipefail
 if [[ -f "${{HOME}}/bs.sh" ]]; then
     source "${{HOME}}/bs.sh"
 fi
+mamba activate plant-design
 export NUMBA_NUM_THREADS={numba_threads}
 {gpu_setup}\
 

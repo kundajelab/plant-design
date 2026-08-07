@@ -1,5 +1,5 @@
 """
-Benchmark ChromBPNet model predictions against observed differential accessibility.
+Benchmark Cherimoya model predictions against observed differential accessibility.
 
 For each cell type, loads the 5-fold trained models and generates out-of-fold
 predicted counts over the union peak set. Predicted counts are normalized and
@@ -10,9 +10,9 @@ da_peaks.csv.
 Requires da_peaks.csv to already exist (run differential_accessibility.py first).
 
 Usage:
-    uv run python src/chrombpnet/benchmark/benchmark_da.py
-    uv run python src/chrombpnet/benchmark/benchmark_da.py --dataset coarse
-    uv run python src/chrombpnet/benchmark/benchmark_da.py --save-output --finetuned
+    uv run python src/cherimoya/benchmark/benchmark_da.py
+    uv run python src/cherimoya/benchmark/benchmark_da.py --dataset coarse
+    uv run python src/cherimoya/benchmark/benchmark_da.py --save-output --finetuned
 """
 
 import argparse
@@ -33,8 +33,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 import species_config  # noqa: E402
-from daicon import load_model_with_adapter  # noqa: E402
-from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
+from model_variants import (  # noqa: E402
+    add_model_variant_args,
+    load_cherimoya_with_adapter,
+    resolve_model_variant,
+)
 
 # Import DA metric functions from the preprocessing script
 sys.path.insert(
@@ -224,7 +227,7 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true")
     add_model_variant_args(
         parser,
-        finetuned_help="Use finetuned models instead of base torch/ models",
+        finetuned_help="Use finetuned models instead of the base model",
         adapter_help="Use default daicon adapter bundles for the selected DA fraction",
     )
     args = parser.parse_args()
@@ -331,11 +334,10 @@ def main():
 
         for j, ps in enumerate(pseudobulks):
             print(f"  Predicting {ps}...")
-            model, _manifest = load_model_with_adapter(
+            model, _manifest = load_cherimoya_with_adapter(
                 model_paths[ps][fold],
                 adapter_paths[ps][fold],
-                map_location="cpu",
-                adapter_root="accessibility",
+                device="cpu",
             )
             pred = predict(
                 model=model,

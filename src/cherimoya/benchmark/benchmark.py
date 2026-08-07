@@ -1,12 +1,12 @@
 """
-Benchmark a trained ChromBPNet model (ported to torch with bpnetlite) across all folds.
+Benchmark a trained Cherimoya model across all folds.
 
 Loads trained models for each fold, predicts on the held-out test chromosomes,
 and reports profile and count prediction metrics.
 
 Usage:
-    uv run python src/chrombpnet/benchmark/benchmark.py -p mesophyll
-    uv run python src/chrombpnet/benchmark/benchmark.py -p mesophyll --finetuned
+    uv run python src/cherimoya/benchmark/benchmark.py -p mesophyll
+    uv run python src/cherimoya/benchmark/benchmark.py -p mesophyll --finetuned
 """
 
 import argparse
@@ -24,8 +24,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 import species_config  # noqa: E402
-from daicon import load_model_with_adapter  # noqa: E402
-from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
+from model_variants import (  # noqa: E402
+    add_model_variant_args,
+    load_cherimoya_with_adapter,
+    resolve_model_variant,
+)
 
 DATASETS = ("base", "fine", "coarse")
 
@@ -58,7 +61,7 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true")
     add_model_variant_args(
         parser,
-        finetuned_help="Use finetuned models instead of base torch/ models",
+        finetuned_help="Use finetuned models instead of the base model",
         adapter_help="Use default daicon adapter bundle for the selected DA fraction",
     )
     args = parser.parse_args()
@@ -155,11 +158,10 @@ def main():
         )
         signals.append(torch.abs(y))
 
-        model, _manifest = load_model_with_adapter(
+        model, _manifest = load_cherimoya_with_adapter(
             model_paths[fold],
             adapter_paths[fold],
-            map_location=torch.device("cpu"),
-            adapter_root="accessibility",
+            device="cpu",
         )
         preds.append(
             predict(

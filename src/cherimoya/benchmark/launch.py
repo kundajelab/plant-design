@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Launch SLURM benchmark jobs for active ChromBPNet model variants.
+"""Launch SLURM benchmark jobs for active Cherimoya model variants.
 
 This launcher covers the main reporting path:
 
-- base ChromBPNet
+- base Cherimoya
 - full-model DA fine-tuning at 0.5 and 0.8 DA fractions
 - daicon adapter DA fine-tuning at 0.5 and 0.8 DA fractions
 
@@ -22,7 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 import species_config
 
-BENCHMARK_DIR = REPO_ROOT / "src" / "chrombpnet" / "benchmark"
+BENCHMARK_DIR = REPO_ROOT / "src" / "cherimoya" / "benchmark"
 DATASETS = ("base", "fine", "coarse")
 PYTHON = ("uv", "run", "--frozen", "python")
 
@@ -56,7 +56,7 @@ VARIANTS = {
         name="base",
         label="Base",
         flags=(),
-        cross_dir=Path("chrombpnet"),
+        cross_dir=Path("cherimoya"),
         da_path=Path("differential_accessibility") / "da_benchmark.json",
         pairwise_path=Path("pairwise_correlations_predicted.json"),
     ),
@@ -64,7 +64,7 @@ VARIANTS = {
         name="finetuned",
         label="Finetuned 50:50",
         flags=("--finetuned",),
-        cross_dir=Path("chrombpnet_finetuned"),
+        cross_dir=Path("cherimoya_finetuned"),
         da_path=Path("differential_accessibility") / "da_benchmark_finetuned.json",
         pairwise_path=Path("pairwise_correlations_predicted_finetuned.json"),
     ),
@@ -72,7 +72,7 @@ VARIANTS = {
         name="finetuned_0.8",
         label="Finetuned 80:20",
         flags=("--finetuned", "--da-fraction", "0.8"),
-        cross_dir=Path("chrombpnet_finetuned_0.8"),
+        cross_dir=Path("cherimoya_finetuned_0.8"),
         da_path=Path("differential_accessibility") / "da_benchmark_finetuned_0.8.json",
         pairwise_path=Path("pairwise_correlations_predicted_finetuned_0.8.json"),
     ),
@@ -253,7 +253,7 @@ nvidia-smi -L
 
 
 def submit_jobs(args, jobs):
-    log_dir = REPO_ROOT / "logs" / "chrombpnet_benchmark"
+    log_dir = REPO_ROOT / "logs" / "cherimoya_benchmark"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     submitted = 0

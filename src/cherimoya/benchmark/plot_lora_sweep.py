@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-BENCHMARK_DIR = REPO_ROOT / "src" / "chrombpnet" / "benchmark"
+BENCHMARK_DIR = REPO_ROOT / "src" / "cherimoya" / "benchmark"
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
 REFERENCE_MODELS = {
     "base": {
