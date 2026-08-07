@@ -5,8 +5,8 @@ Loads trained models for each fold, predicts on the held-out test chromosomes,
 and reports profile and count prediction metrics.
 
 Usage:
-    uv run python src/cherimoya/benchmark/benchmark.py -p mesophyll
-    uv run python src/cherimoya/benchmark/benchmark.py -p mesophyll --finetuned
+    uv run python src/cherimoya_pipeline/benchmark/benchmark.py -p mesophyll
+    uv run python src/cherimoya_pipeline/benchmark/benchmark.py -p mesophyll --finetuned
 """
 
 import argparse

@@ -10,9 +10,9 @@ da_peaks.csv.
 Requires da_peaks.csv to already exist (run differential_accessibility.py first).
 
 Usage:
-    uv run python src/cherimoya/benchmark/benchmark_da.py
-    uv run python src/cherimoya/benchmark/benchmark_da.py --dataset coarse
-    uv run python src/cherimoya/benchmark/benchmark_da.py --save-output --finetuned
+    uv run python src/cherimoya_pipeline/benchmark/benchmark_da.py
+    uv run python src/cherimoya_pipeline/benchmark/benchmark_da.py --dataset coarse
+    uv run python src/cherimoya_pipeline/benchmark/benchmark_da.py --save-output --finetuned
 """
 
 import argparse

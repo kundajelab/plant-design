@@ -14,8 +14,8 @@ Negatives are GC-matched regions pre-generated per pseudobulk by
 negatives.py (Cherimoya's own `negatives` CLI, not fold-specific).
 
 Usage:
-    uv run python src/cherimoya/fit/train_cherimoya.py -p bundle_sheath -f 0
-    uv run python src/cherimoya/fit/train_cherimoya.py --species A.thaliana -p mesophyll -f 2
+    uv run python src/cherimoya_pipeline/fit/train_cherimoya.py -p bundle_sheath -f 0
+    uv run python src/cherimoya_pipeline/fit/train_cherimoya.py --species A.thaliana -p mesophyll -f 2
 """
 
 import argparse

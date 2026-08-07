@@ -40,28 +40,28 @@ Negatives are sampled once per pseudobulk (not per fold) -- Cherimoya's own
 filtering already restricts both peaks and negatives to the active fold.
 
 ```bash
-uv run python src/cherimoya/fit/negatives.py
-uv run python src/cherimoya/fit/negatives.py --species A.thaliana --interactive | parallel
+uv run python src/cherimoya_pipeline/fit/negatives.py
+uv run python src/cherimoya_pipeline/fit/negatives.py --species A.thaliana --interactive | parallel
 ```
 
 ## Train
 
 ```bash
-uv run python src/cherimoya/fit/launch.py
-uv run python src/cherimoya/fit/launch.py --dataset coarse
-uv run python src/cherimoya/fit/launch.py -p bundle_sheath -f 0
+uv run python src/cherimoya_pipeline/fit/launch.py
+uv run python src/cherimoya_pipeline/fit/launch.py --dataset coarse
+uv run python src/cherimoya_pipeline/fit/launch.py -p bundle_sheath -f 0
 ```
 
 Interactive mode prints one command per missing job:
 
 ```bash
-uv run python src/cherimoya/fit/launch.py --interactive | parallel -j 4
+uv run python src/cherimoya_pipeline/fit/launch.py --interactive | parallel -j 4
 ```
 
 Useful training knobs (see `train_cherimoya.py --help` for the full list):
 
 ```bash
-uv run python src/cherimoya/fit/launch.py \
+uv run python src/cherimoya_pipeline/fit/launch.py \
     --n-filters 128 \
     --n-layers 9 \
     --max-epochs 50 \

@@ -22,7 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 import species_config
 
-BENCHMARK_DIR = REPO_ROOT / "src" / "cherimoya" / "benchmark"
+BENCHMARK_DIR = REPO_ROOT / "src" / "cherimoya_pipeline" / "benchmark"
 DATASETS = ("base", "fine", "coarse")
 PYTHON = ("uv", "run", "--frozen", "python")
 

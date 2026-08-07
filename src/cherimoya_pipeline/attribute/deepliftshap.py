@@ -1,10 +1,10 @@
-"""Compute DeepLIFT/SHAP attributions for a trained BPNet model across all folds.
+"""Compute DeepLIFT/SHAP attributions for a trained Cherimoya model across all folds.
 
 Loads trained models for each fold, computes hypothetical attributions on all
-peaks genome-wide, averages across folds, and saves to attributions/bpnet/.
+peaks genome-wide, averages across folds, and saves to attributions/cherimoya/.
 
 Usage:
-    python src/bpnet/attribute/deepliftshap.py -p epidermis
+    uv run python src/cherimoya_pipeline/attribute/deepliftshap.py -p epidermis --head profile
 """
 
 import argparse
@@ -30,14 +30,15 @@ from da_peaks import (
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
-sys.path.insert(0, str(REPO_ROOT / "src" / "chrombpnet" / "benchmark"))
+sys.path.insert(0, str(REPO_ROOT / "src" / "cherimoya_pipeline" / "benchmark"))
 
 import species_config  # noqa: E402
-from daicon import (  # noqa: E402
-    iter_adapters,
-    load_accessibility_with_adapter,
+from daicon import iter_adapters  # noqa: E402
+from model_variants import (  # noqa: E402
+    add_model_variant_args,
+    load_cherimoya_with_adapter,
+    resolve_model_variant,
 )
-from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
 
 
 def assert_deeplift_shap_compatible(module):
@@ -71,14 +72,6 @@ def main():
         help="Dataset namespace to use (default: base).",
     )
     parser.add_argument(
-        "-m",
-        "--model-type",
-        type=str,
-        required=True,
-        choices=["bias", "accessibility"],
-        help="The name of the pseudobulk to benchmark",
-    )
-    parser.add_argument(
         "--head",
         type=str,
         required=True,
@@ -101,7 +94,7 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true")
     add_model_variant_args(
         parser,
-        finetuned_help="Use finetuned accessibility models instead of base torch/ models",
+        finetuned_help="Use finetuned models instead of the base model",
         adapter_help="Use default daicon adapter bundles for the selected DA fraction",
     )
     args = parser.parse_args()
@@ -116,20 +109,6 @@ def main():
     model_subdir = variant["model_subdir"]
     adapter_id = variant["adapter_id"]
 
-    if args.finetuned and args.model_type == "bias":
-        print(
-            "Error: bias model is not saved during finetuning (bias is frozen). "
-            "Use --model-type accessibility with --finetuned.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    if adapter_id is not None and args.model_type == "bias":
-        print(
-            "Error: adapters are only defined for the accessibility model. "
-            "Use --model-type accessibility with --adapter or --adapter-run-id.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
     if args.da_peaks is not None and args.dataset != "base":
         print(
             "Error: --da-peaks is currently only defined for --dataset base.",
@@ -163,8 +142,7 @@ def main():
     # Resolve model directory and verify that all models exist
     model_dir = dataset_model_dir(species, args.dataset, args.pseudobulk) / model_subdir
     model_paths = [
-        model_dir / f"{args.pseudobulk}_f{fold}.{args.model_type}.torch"
-        for fold in range(n_folds)
+        model_dir / f"{args.pseudobulk}_f{fold}.torch" for fold in range(n_folds)
     ]
     for model_path in model_paths:
         if not model_path.exists():
@@ -210,16 +188,12 @@ def main():
     attributions = []
     for fold in range(n_folds):
         # Load model
-        if adapter_id is None:
-            model = torch.load(
-                model_paths[fold], weights_only=False, map_location=torch.device("cpu")
-            )
-        else:
-            model, _manifest = load_accessibility_with_adapter(
-                model_paths[fold],
-                adapter_paths[fold],
-                map_location=torch.device("cpu"),
-            )
+        model, _manifest = load_cherimoya_with_adapter(
+            model_paths[fold],
+            adapter_paths[fold],
+            device="cpu",
+        )
+        if adapter_id is not None:
             model.eval()
             assert_deeplift_shap_compatible(model)
         if args.head == "profile":
@@ -244,17 +218,16 @@ def main():
 
     # Output directory
     if adapter_id is not None:
-        base_subdir = f"chrombpnet_adapter_{adapter_id}"
+        base_subdir = f"cherimoya_adapter_{adapter_id}"
     else:
-        base_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
+        base_subdir = f"cherimoya_{fine_tag}" if args.finetuned else "cherimoya"
     out_subdir = base_subdir if args.dataset == "base" else f"{base_subdir}_{args.dataset}"
     out_dir = species_config.attributions_dir(species) / out_subdir
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Save attributions
     out_path = (
-        out_dir
-        / f"{args.pseudobulk}_{args.model_type}_{args.head}{da_suffix(args.da_peaks)}.npz"
+        out_dir / f"{args.pseudobulk}_{args.head}{da_suffix(args.da_peaks)}.npz"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(out_path, np.stack(attributions).mean(axis=0))
