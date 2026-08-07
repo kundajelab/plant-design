@@ -89,7 +89,7 @@ def common_training_args(args, lr):
 
 
 def build_full_job(args, pseudobulk, fold, da_fraction):
-    script = REPO_ROOT / "src" / "chrombpnet" / "da_finetuning" / "finetune_da.py"
+    script = REPO_ROOT / "src" / "cherimoya_pipeline" / "da_finetuning" / "finetune_da.py"
     command = [
         *PYTHON,
         script,
@@ -121,7 +121,7 @@ def build_full_job(args, pseudobulk, fold, da_fraction):
 
 
 def build_adapter_job(args, pseudobulk, fold, da_fraction):
-    script = REPO_ROOT / "src" / "chrombpnet" / "da_finetuning" / "finetune_da.py"
+    script = REPO_ROOT / "src" / "cherimoya_pipeline" / "da_finetuning" / "finetune_da.py"
     run_id = default_adapter_run_id(da_fraction)
     command = [
         *PYTHON,
@@ -195,7 +195,7 @@ def print_finished_report(jobs):
 
 
 def submit_jobs(args, jobs):
-    log_dir = REPO_ROOT / "logs" / "chrombpnet_da_finetuning"
+    log_dir = REPO_ROOT / "logs" / "cherimoya_da_finetuning"
     log_dir.mkdir(parents=True, exist_ok=True)
     submitted = 0
     skipped_finished_jobs = 0

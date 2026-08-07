@@ -135,7 +135,7 @@ def main():
             sys.exit(1)
     folds = args.fold if args.fold is not None else list(range(N_FOLDS))
 
-    script = REPO_ROOT / "src" / "chrombpnet" / "da_finetuning" / "finetune_adapters.py"
+    script = REPO_ROOT / "src" / "cherimoya_pipeline" / "da_finetuning" / "finetune_adapters.py"
     keys = [
         "targets",
         "conv_rank",
@@ -249,7 +249,7 @@ def main():
                     print(entry["command"])
         return
 
-    log_dir = REPO_ROOT / "logs" / "chrombpnet_adapter_sweep"
+    log_dir = REPO_ROOT / "logs" / "cherimoya_adapter_sweep"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     submitted = 0

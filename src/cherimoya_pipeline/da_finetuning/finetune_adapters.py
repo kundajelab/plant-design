@@ -35,8 +35,8 @@ def build_parser():
     parser.add_argument(
         "--targets",
         nargs="+",
-        default=["all"],
-        help="Adapter layer targets or presets (default: all)",
+        default=["all_postblock"],
+        help="Adapter layer targets or presets (default: all_postblock)",
     )
     parser.add_argument("--conv-rank", type=int, default=16)
     parser.add_argument("--linear-rank", type=int, default=4)

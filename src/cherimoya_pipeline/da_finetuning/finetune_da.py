@@ -1,8 +1,8 @@
 """
-Finetune ChromBPNet accessibility model on differentially accessible peaks.
+Finetune a Cherimoya model on differentially accessible peaks.
 
-Loads the 5-fold trained ChromBPNet models for a given cell type and finetunes
-either the full accessibility submodel or daicon adapters using a mixed training set:
+Loads the 5-fold trained Cherimoya models for a given cell type and finetunes
+either the full model or daicon adapters using a mixed training set:
   - 50% DA peaks: union of da_peaks_tau.bed + da_peaks_pairwise.bed
   - 50% base mix: cell-type–specific peaks (7/8) + nonpeaks (1/8)
 
@@ -15,15 +15,14 @@ Requires differential_accessibility.py outputs to exist in the selected dataset:
 
 Full finetuned models are saved to:
     models/{dataset/}{pseudobulk}/finetuned/{pseudobulk}_f{fold}.torch
-    models/{dataset/}{pseudobulk}/finetuned/{pseudobulk}_f{fold}.accessibility.torch
 
 Daicon adapter bundles are saved to:
     models/{dataset/}{pseudobulk}/adapters/{adapter_run_id}/{pseudobulk}_f{fold}.adapter.pt
 
 Usage:
-    uv run python src/chrombpnet/da_finetuning/finetune_da.py -p mesophyll -f 0
-    uv run python src/chrombpnet/da_finetuning/finetune_da.py --dataset coarse -p mesophyll -f 0
-    uv run python src/chrombpnet/da_finetuning/finetune_da.py -p mesophyll -f 0 --mode adapter --da-fraction 0.8
+    uv run python src/cherimoya_pipeline/da_finetuning/finetune_da.py -p mesophyll -f 0
+    uv run python src/cherimoya_pipeline/da_finetuning/finetune_da.py --dataset coarse -p mesophyll -f 0
+    uv run python src/cherimoya_pipeline/da_finetuning/finetune_da.py -p mesophyll -f 0 --mode adapter --da-fraction 0.8
 """
 
 import argparse
@@ -36,8 +35,10 @@ from pathlib import Path
 import pandas as pd
 import torch
 import torch.nn.functional as F
+from cherimoya import Cherimoya
 from daicon import (  # noqa: E402
-    ADAPTER_PRESETS,
+    Cherimoya_PRESETS,
+    Cherimoya_TARGETS,
     adapter_parameters,
     count_adapter_parameters,
     inject_adapters,
@@ -53,7 +54,9 @@ PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xy
 DATASETS = ("base", "fine", "coarse")
 IN_WINDOW = 2114
 OUT_WINDOW = 1000
-DEFAULT_ADAPTER_TARGETS = "all"
+# Cherimoya has no single "all" preset (unlike BPNet's iconv+rconvs+fconv+
+# linear); all_postblock (blocks + heads) is the broadest available.
+DEFAULT_ADAPTER_TARGETS = "all_postblock"
 MNLLLoss = None
 log1pMSELoss = None
 extract_loci = None
@@ -89,7 +92,7 @@ def default_adapter_run_id(da_fraction):
 
 
 def _target_choices():
-    return sorted(set(ADAPTER_PRESETS) | {"iconv", "rconvs", "fconv", "linear"})
+    return sorted(set(Cherimoya_PRESETS) | set(Cherimoya_TARGETS))
 
 
 def _load_training_dependencies():
@@ -335,22 +338,19 @@ def train_finetune_model(
 ):
     """Training loop shared by full-model and daicon adapter finetuning.
 
-    Uses model.forward() (ChromBPNet) for the forward pass so that the bias
-    profile is correctly cropped before being added to the accessibility profile.
-    bpnetlite's built-in fit() calls the two submodels separately and adds their
-    profiles directly, which fails when they have different output widths.
+    Uses model.forward() directly, matching model.fit()'s own call
+    convention -- Cherimoya has no bias/accessibility submodel split to
+    keep separately frozen or add profiles from.
     """
     best_loss = float("inf")
     early_stop_count = 0
     log_rows = []
-    train_module = model.accessibility if train_module is None else train_module
+    train_module = model if train_module is None else train_module
 
-    model.bias.eval()
     _load_training_dependencies()
 
     for epoch in range(max_epochs):
         train_module.train()
-        model.bias.eval()
         t0 = time.time()
         for X, y in train_loader:
             X = X.to(device).float()
@@ -433,8 +433,7 @@ def finetune(
     """Backward-compatible full-model finetuning helper."""
 
     def save_best():
-        torch.save(model, f"{model.name}.torch")
-        torch.save(model.accessibility, f"{model.name}.accessibility.torch")
+        model.save(f"{model.name}.torch")
 
     train_finetune_model(
         model=model,
@@ -444,7 +443,7 @@ def finetune(
         y_valid=y_valid,
         save_best=save_best,
         log_path=f"{model.name}.log",
-        train_module=model.accessibility,
+        train_module=model,
         max_epochs=max_epochs,
         batch_size=batch_size,
         early_stopping=early_stopping,
@@ -664,10 +663,10 @@ def main(argv=None):
     print(f"  Valid chroms: {test_chroms}")
 
     # --- Load source model ---
-    model_path = root / ps / "torch" / f"{ps}_f{fold}.torch"
+    model_path = root / ps / f"{ps}_f{fold}.torch"
     print(f"  Loading model from {model_path}...")
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = torch.load(model_path, weights_only=False, map_location=device)
+    model = Cherimoya.load(model_path, device=device, compile=False)
 
     adapter_path = out_dir / f"{ps}_f{fold}.adapter.pt"
     adapter_log_path = out_dir / f"{ps}_f{fold}.log.tsv"
@@ -678,16 +677,17 @@ def main(argv=None):
             param.requires_grad = False
 
         adapter_config = inject_adapters(
-            model.accessibility,
+            model,
             targets=args.adapter_targets,
             conv_rank=args.conv_rank,
             linear_rank=args.linear_rank,
             conv_scale=args.conv_scale,
             linear_scale=args.linear_scale,
             dropout=args.dropout,
+            architecture="cherimoya",
         )
         model.to(device)
-        trainable_params = count_adapter_parameters(model.accessibility)
+        trainable_params = count_adapter_parameters(model)
         if trainable_params == 0:
             print("Error: no adapter parameters were injected.", file=sys.stderr)
             sys.exit(1)
@@ -698,8 +698,7 @@ def main(argv=None):
         print(f"  Trainable adapter parameters: {trainable_params:,}")
     else:
         model.name = str(out_dir / f"{ps}_f{fold}")
-        # Bias is already frozen at construction; ensure accessibility is trainable
-        for param in model.accessibility.parameters():
+        for param in model.parameters():
             param.requires_grad = True
 
     # --- Load nonpeaks ---
@@ -774,15 +773,13 @@ def main(argv=None):
     # --- Finetune ---
     if args.mode == "adapter":
         optimizer = torch.optim.Adam(
-            adapter_parameters(model.accessibility),
+            adapter_parameters(model),
             lr=args.lr,
             weight_decay=args.weight_decay,
         )
 
         def save_best():
-            save_adapter_bundle(
-                adapter_path, model, manifest, adapter_root="accessibility"
-            )
+            save_adapter_bundle(adapter_path, model, manifest, adapter_root=None)
 
         print(
             f"  Finetuning daicon adapters (lr={args.lr}, max_epochs={args.epochs}, "
@@ -809,11 +806,11 @@ def main(argv=None):
                 root / ps / "adapter_models" / args.adapter_run_id
             )
             materialized_dir.mkdir(parents=True, exist_ok=True)
-            torch.save(model, materialized_dir / f"{ps}_f{fold}.torch")
+            model.save(materialized_dir / f"{ps}_f{fold}.torch")
         print(f"\nAdapter bundle saved to {adapter_path}")
         print(f"Training log saved to {adapter_log_path}")
     else:
-        optimizer = torch.optim.Adam(model.accessibility.parameters(), lr=args.lr)
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
         print(
             f"  Finetuning (lr={args.lr}, max_epochs={args.epochs}, "
             f"patience={args.patience})..."
