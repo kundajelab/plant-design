@@ -10,6 +10,12 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "bam2bw",
     "bpnet-lite",
+    # cherimoya>=0.2.0 requires torch>=2.9 and triton>=3.5.1; bpnet-lite/
+    # daicon/tangermeme don't pin torch themselves, so they follow whatever
+    # is resolved here. triton has no macOS wheels at all (Linux/CUDA-only
+    # compiler toolchain), so cherimoya is Linux-only -- Cherimoya training/
+    # benchmarking happens on Linux GPU machines regardless.
+    "cherimoya>=0.2.0; sys_platform == 'linux'",
     "daicon",
     "huggingface-hub",
     "joblib",
@@ -28,21 +34,13 @@ dependencies = [
     "scipy",
     "seaborn",
     "tangermeme>=1.4.0",
-    "torch==2.6.0; sys_platform == 'linux'",
+    "torch>=2.9.0; sys_platform == 'linux'",
     "torch; sys_platform != 'linux'",
     "tqdm",
 ]
 
 [project.optional-dependencies]
 hub = ["huggingface-hub"]
-# cherimoya>=0.2.0 requires torch>=2.9, which conflicts with this project's
-# pinned torch==2.6.0 (needed by bpnet-lite/daicon/tangermeme). This extra is
-# declared for documentation only; `uv sync --extra cherimoya` cannot resolve
-# it here. Install cherimoya in a separate environment (e.g. the training
-# machine/container) instead.
-cherimoya = [
-    "cherimoya>=0.2.0",
-]
 # MotifCompendium and personal_bpnet are external/local research dependencies
 # until resolvable install sources are confirmed.
 # Metaformer / promoterai-torch is still in development and will be added
