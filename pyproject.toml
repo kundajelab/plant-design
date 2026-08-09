@@ -66,6 +66,20 @@ required-environments = [
     "sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 
+[[tool.uv.index]]
+# Default PyPI linux torch wheels now require a newer CUDA runtime than
+# Sherlock GPU nodes' drivers support (driver reports max CUDA 12.9, but the
+# plain PyPI wheel needs CUDA 13+ and fails with "CUDA driver too old" at
+# torch.cuda init). Pin to the cu129 build instead.
+name = "pytorch-cu129"
+url = "https://download.pytorch.org/whl/cu129"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu129", marker = "sys_platform == 'linux'" },
+]
+
 [tool.setuptools]
 # This project uses pyproject.toml as a local environment definition. The
 # workflow scripts are run from the repository checkout, not installed as
