@@ -13,6 +13,7 @@ import argparse
 import sys
 
 from launcher_common import (
+    SCRIPT_DIR,
     add_common_args,
     cleanup_then_run,
     print_jobs,
@@ -20,6 +21,8 @@ from launcher_common import (
 )
 
 import species_config
+
+TRAIN_SCRIPT = SCRIPT_DIR / "train_cherimoya.py"
 
 
 def parse_args():
@@ -55,7 +58,7 @@ def main():
                 "run",
                 "--frozen",
                 "python",
-                "train_cherimoya.py",
+                TRAIN_SCRIPT,
                 "--species",
                 species,
                 "--dataset",
