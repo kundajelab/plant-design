@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Submit SLURM jobs to run DeepLIFT/SHAP attributions for Cherimoya models.
+"""Collect and print unfinished DeepLIFT/SHAP attribution jobs for Cherimoya models.
 
-Reads pseudobulks from configs/pseudobulks.txt and submits one sbatch job per
-(pseudobulk, head) pair via `deepliftshap.py`.
+Reads pseudobulks from configs/<species>/pseudobulks.txt and prints one
+shell command per (pseudobulk, head) pair via `deepliftshap.py` whose output
+is missing; pipe into `parallel` or run directly.
 
 Jobs are skipped if the attribution output already exists, if the required
 loci BED file is missing (run filter_nonACGT_regions.py, differential_accessibility.py,
@@ -11,7 +12,6 @@ missing (run train_cherimoya.py first).
 
 Usage:
     python src/cherimoya_pipeline/attribute/launch.py                                    # all pseudobulks, both heads
-    python src/cherimoya_pipeline/attribute/launch.py --dry-run                          # print sbatch scripts without submitting
     python src/cherimoya_pipeline/attribute/launch.py --head count                       # count head only
     python src/cherimoya_pipeline/attribute/launch.py --finetuned                        # finetuned models (50:50 DA split)
     python src/cherimoya_pipeline/attribute/launch.py --finetuned --da-fraction 0.8     # finetuned models (80:20 DA split)
@@ -19,13 +19,10 @@ Usage:
     python src/cherimoya_pipeline/attribute/launch.py --adapter --da-fraction 0.8       # default daicon adapters (80:20 DA split)
     python src/cherimoya_pipeline/attribute/launch.py --da-peaks tau                    # attributions on tau-specific peaks only
     python src/cherimoya_pipeline/attribute/launch.py --da-peaks specific_union       # attributions on per-cell-type union DA peaks
-    python src/cherimoya_pipeline/attribute/launch.py --time 24:00:00 --mem 128G
 """
 
 import argparse
-import subprocess
 import sys
-import textwrap
 from pathlib import Path
 from da_peaks import (
     DATASETS,
@@ -51,11 +48,6 @@ def main():
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     species_config.add_species_arg(parser)
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="print sbatch scripts without submitting",
-    )
     parser.add_argument(
         "--head",
         type=str,
@@ -91,15 +83,6 @@ def main():
         default=64,
         help="batch size for attribution (default: 64)",
     )
-    # SLURM resource flags
-    parser.add_argument("--partition", type=str, default="gpu,akundaje,owners")
-    parser.add_argument(
-        "--constraint", type=str, default="GPU_GEN:AMP|GPU_GEN:LOV|GPU_GEN:HPR"
-    )
-    parser.add_argument("--gpus", type=int, default=1)
-    parser.add_argument("--cpus-per-task", type=int, default=4)
-    parser.add_argument("--mem", type=str, default="64G")
-    parser.add_argument("--time", type=str, default="48:00:00")
     args = parser.parse_args()
     species = species_config.resolve_species(args.species)
     variant = resolve_model_variant(args)
@@ -125,10 +108,8 @@ def main():
     pseudobulks = read_pseudobulks(species, args.dataset)
 
     attr_dir = species_config.attributions_dir(species)
-    log_dir = species_config.logs_dir(species) / "cherimoya_deepliftshap"
-    log_dir.mkdir(parents=True, exist_ok=True)
 
-    submitted = 0
+    printed = 0
     skipped_done = 0
     skipped_missing = 0
 
@@ -180,13 +161,6 @@ def main():
                 skipped_done += 1
                 continue
 
-            tag = (
-                f"_adapter_{adapter_id}"
-                if adapter_id is not None
-                else (f"_{fine_tag}" if args.finetuned else "")
-            )
-            da_tag = da_suffix(args.da_peaks)
-            job_name = f"deepliftshap{tag}{da_tag}_{pseudobulk}_{head}"
             script_path = Path(__file__).resolve().parent / "deepliftshap.py"
 
             finetuned_flags = (
@@ -212,51 +186,14 @@ def main():
                 f"{da_peaks_flag}"
             )
 
-            sbatch_script = textwrap.dedent(f"""\
-                #!/bin/bash -l
-                #SBATCH --job-name={job_name}
-                #SBATCH --ntasks=1
-                #SBATCH --ntasks-per-node=1
-                #SBATCH --nodes=1
-                #SBATCH --gpus={args.gpus}
-                #SBATCH -C {args.constraint}
-                #SBATCH --cpus-per-task={args.cpus_per_task}
-                #SBATCH --mem={args.mem}
-                #SBATCH --partition={args.partition}
-                #SBATCH --time={args.time}
-                #SBATCH --output={log_dir}/{job_name}.out
-                #SBATCH --error={log_dir}/{job_name}.err
+            print(deepliftshap_cmd)
+            printed += 1
 
-                source ~/bs.sh
-                mamba activate plant-design
-                nvidia-smi -L
-
-                time {deepliftshap_cmd}
-            """)
-
-            if args.dry_run:
-                print(f"--- {job_name} ---")
-                print(sbatch_script)
-                submitted += 1
-                continue
-
-            result = subprocess.run(
-                ["sbatch"], input=sbatch_script, capture_output=True, text=True
-            )
-            if result.returncode == 0:
-                print(f"{job_name}: {result.stdout.strip()}")
-                submitted += 1
-            else:
-                print(
-                    f"ERROR submitting {job_name}: {result.stderr.strip()}",
-                    file=sys.stderr,
-                )
-
-    action = "Would submit" if args.dry_run else "Submitted"
     total = len(pseudobulks) * len(heads)
     print(
-        f"\n{action} {submitted} jobs, skipped {skipped_missing} missing inputs, "
-        f"skipped {skipped_done} already done ({total} total)"
+        f"\nPrinted {printed} command(s), skipped {skipped_missing} missing inputs, "
+        f"skipped {skipped_done} already done ({total} total)",
+        file=sys.stderr,
     )
 
 

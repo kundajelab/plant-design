@@ -2,9 +2,10 @@
 
 Species are identified by Latin binomial (e.g. S.bicolor, A.thaliana, O.sativa).
 Selects the active species via --species / $SPECIES (default: S.bicolor, i.e.
-sorghum) and resolves config/data/output directories for it. The default
-species keeps today's flat, un-namespaced paths so existing sorghum runs are
-unaffected; every other species is namespaced under a same-named subdirectory.
+sorghum) and resolves config/data/output directories for it. Every species,
+including the default, is namespaced under a same-named subdirectory (e.g.
+data/S.bicolor/, configs/A.thaliana/) -- there is no flat/un-namespaced
+layout for any species.
 """
 
 from __future__ import annotations
@@ -30,8 +31,7 @@ def resolve_species(cli_value: str | None = None) -> str:
 
 
 def _ns(kind: str, species: str) -> Path:
-    root = REPO_ROOT / kind
-    return root if species == DEFAULT_SPECIES else root / species
+    return REPO_ROOT / kind / species
 
 
 def config_dir(species: str) -> Path:

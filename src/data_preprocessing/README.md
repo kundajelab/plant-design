@@ -5,25 +5,25 @@ so use `uv run python` for Python entrypoints.
 
 ## Inputs
 
-Shared inputs:
+Shared inputs (`--species`/`$SPECIES` defaults to `S.bicolor`):
 
 ```text
-data/Sbicolor_730_v5.0.fa
-data/Sbicolor_730_v5.0.chrom.sizes
-configs/pseudobulks.txt
-configs/pseudobulks_coarse.txt
-configs/pseudobulks_fine.txt
+data/<species>/<genome>.fa
+data/<species>/<genome>.chrom.sizes
+configs/<species>/pseudobulks.txt
+configs/<species>/pseudobulks_coarse.txt
+configs/<species>/pseudobulks_fine.txt
 ```
 
 Dataset-specific peak and signal directories:
 
 ```text
-data/peaks/
-data/peaks_coarse/
-data/peaks_fine/
-data/bigwigs/
-data/bigwigs_coarse/
-data/bigwigs_fine/
+data/<species>/peaks/
+data/<species>/peaks_coarse/
+data/<species>/peaks_fine/
+data/<species>/bigwigs/
+data/<species>/bigwigs_coarse/
+data/<species>/bigwigs_fine/
 ```
 
 ## BigWigs
@@ -31,12 +31,15 @@ data/bigwigs_fine/
 `make_bigwigs.sh` converts pseudobulk fragment alignments into shifted bigWigs.
 It is cluster/path-specific, so inspect the source paths before running it on a
 new filesystem. `$SPECIES` selects the namespace (default `S.bicolor`); other
-knobs (`DATA_DIR`, `REF_DIR`, `GENOME_FASTA_NAME`, `OUT_DIR`,
-`FRAGMENTS_SUFFIX`, `PSEUDOBULKS_FILE`) override the per-species defaults. The
-genome rsync/faidx/chrom-sizes steps are skipped automatically if the genome
-is already present under `data/<species>/`, so species whose genome was
-fetched a different way (see "Arabidopsis" below) don't need a working
-`REF_DIR`.
+knobs (`DATA_DIR`, `REF_DIR`, `OUT_DIR`, `FRAGMENTS_SUFFIX`,
+`PSEUDOBULKS_FILE`) override the per-species defaults. `GENOME_FASTA_NAME`
+defaults to whatever `configs/<species>/species.json` names (the same
+manifest `species_config.genome_fasta()` reads) rather than to Sorghum's
+filename, so other species don't silently look for a genome that was never
+fetched under their own `data/<species>/`. The genome rsync/faidx/chrom-sizes
+steps are skipped automatically if the genome is already present, so species
+whose genome was fetched a different way (see "Arabidopsis" below) don't
+need a working `REF_DIR`.
 
 ```bash
 bash src/data_preprocessing/make_bigwigs.sh
@@ -87,9 +90,9 @@ uv run python src/data_preprocessing/differential_accessibility.py --dataset fin
 Outputs are written inside the selected peaks directory:
 
 ```text
-data/peaks/differential_accessibility/
-data/peaks_coarse/differential_accessibility/
-data/peaks_fine/differential_accessibility/
+data/<species>/peaks/differential_accessibility/
+data/<species>/peaks_coarse/differential_accessibility/
+data/<species>/peaks_fine/differential_accessibility/
 ```
 
 Main outputs:
@@ -119,9 +122,9 @@ If you need to regenerate only the pairwise-higher files from an existing
 
 ```bash
 uv run python src/data_preprocessing/write_pairwise_higher_beds.py \
-    --da data/peaks/differential_accessibility/da_peaks.csv \
-    --out-dir data/peaks/differential_accessibility \
-    --pseudobulks configs/pseudobulks.txt
+    --da data/S.bicolor/peaks/differential_accessibility/da_peaks.csv \
+    --out-dir data/S.bicolor/peaks/differential_accessibility \
+    --pseudobulks configs/S.bicolor/pseudobulks.txt
 ```
 
 For coarse or fine:
@@ -129,7 +132,7 @@ For coarse or fine:
 ```bash
 dataset=coarse
 uv run python src/data_preprocessing/write_pairwise_higher_beds.py \
-    --da "data/peaks_${dataset}/differential_accessibility/da_peaks.csv" \
-    --out-dir "data/peaks_${dataset}/differential_accessibility" \
-    --pseudobulks "configs/pseudobulks_${dataset}.txt"
+    --da "data/S.bicolor/peaks_${dataset}/differential_accessibility/da_peaks.csv" \
+    --out-dir "data/S.bicolor/peaks_${dataset}/differential_accessibility" \
+    --pseudobulks "configs/S.bicolor/pseudobulks_${dataset}.txt"
 ```

@@ -12,18 +12,18 @@ uv run python src/data_preprocessing/differential_accessibility.py --dataset coa
 uv run python src/cherimoya_pipeline/fit/launch.py --dataset coarse
 ```
 
-Required files:
+Required files (`--species` defaults to `S.bicolor`):
 
 ```text
-configs/pseudobulks{_dataset}.txt
-configs/fold_0.json ... configs/fold_4.json
-data/Sbicolor_730_v5.0.fa
-data/bigwigs{_dataset}/<pseudobulk>.bw
-data/peaks{_dataset}/<pseudobulk>_peaks.narrowPeak
-data/negatives{_dataset}/<pseudobulk>_negatives.bed
-data/peaks{_dataset}/differential_accessibility/da_peaks_tau.bed
-data/peaks{_dataset}/differential_accessibility/da_peaks_pairwise.bed
-models/{dataset/}<pseudobulk>/<pseudobulk>_f<fold>.torch
+configs/<species>/pseudobulks{_dataset}.txt
+configs/<species>/fold_0.json ... fold_4.json
+data/<species>/<genome>.fa
+data/<species>/bigwigs{_dataset}/<pseudobulk>.bw
+data/<species>/peaks{_dataset}/<pseudobulk>_peaks.narrowPeak
+data/<species>/negatives{_dataset}/<pseudobulk>_negatives.bed
+data/<species>/peaks{_dataset}/differential_accessibility/da_peaks_tau.bed
+data/<species>/peaks{_dataset}/differential_accessibility/da_peaks_pairwise.bed
+models/<species>/{dataset/}<pseudobulk>/<pseudobulk>_f<fold>.torch
 ```
 
 ## Single Runs
@@ -61,7 +61,9 @@ uv run python src/cherimoya_pipeline/da_finetuning/finetune_da.py \
 
 ## Standard Launcher
 
-Submit all standard full-model and adapter runs:
+No SLURM integration: `launch.py` collects and prints all standard
+full-model and adapter run commands whose expected training log is missing;
+pipe into `parallel`/`simple_gpu_scheduler` or run directly.
 
 ```bash
 uv run python src/cherimoya_pipeline/da_finetuning/launch.py
@@ -79,16 +81,15 @@ uv run python src/cherimoya_pipeline/da_finetuning/launch.py \
     --fold 0
 ```
 
-Print commands for local scheduling:
+Include commands whose expected log already exists:
 
 ```bash
 uv run python src/cherimoya_pipeline/da_finetuning/launch.py \
     --dataset fine \
-    --interactive \
     --rerun-finished
 ```
 
-Check expected logs without launching:
+Check expected logs without printing commands:
 
 ```bash
 uv run python src/cherimoya_pipeline/da_finetuning/launch.py \
@@ -106,20 +107,19 @@ uv run python src/cherimoya_pipeline/da_finetuning/launch_adapter_sweep.py \
     --config configs/adapter_sweeps/smoke.json
 ```
 
-Print sweep commands:
+Include commands whose expected log already exists:
 
 ```bash
 uv run python src/cherimoya_pipeline/da_finetuning/launch_adapter_sweep.py \
     --dataset coarse \
-    --interactive \
     --rerun-finished
 ```
 
 ## Outputs
 
-Base dataset outputs are written below `models/<pseudobulk>/`. Coarse and fine
-outputs are written below `models/coarse/<pseudobulk>/` and
-`models/fine/<pseudobulk>/`.
+Base dataset outputs are written below `models/<species>/<pseudobulk>/`.
+Coarse and fine outputs are written below `models/<species>/coarse/<pseudobulk>/`
+and `models/<species>/fine/<pseudobulk>/`.
 
 ```text
 finetuned/<pseudobulk>_f<fold>.torch

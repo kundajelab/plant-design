@@ -6,11 +6,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 species="${SPECIES:-S.bicolor}"
 dataset="${DATASET:-coarse}"
-if [[ "${species}" == "S.bicolor" ]]; then
-    data_root="${REPO_ROOT}/data"
-else
-    data_root="${REPO_ROOT}/data/${species}"
-fi
+data_root="${REPO_ROOT}/data/${species}"
 
 if [[ "${dataset}" == "base" ]]; then
     peaks_dirname="peaks"

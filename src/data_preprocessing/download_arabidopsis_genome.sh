@@ -40,7 +40,7 @@ curl -sL --fail \
     "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&id=NC_000932.1&rettype=fasta&retmode=text" \
     -o "${tmp_dir}/chrC.fna"
 
-python3 - "${tmp_dir}/chroms.fna" "${tmp_dir}/chrM.fna" "${tmp_dir}/chrC.fna" "${OUT_FASTA}" <<'PYEOF'
+python - "${tmp_dir}/chroms.fna" "${tmp_dir}/chrM.fna" "${tmp_dir}/chrC.fna" "${OUT_FASTA}" <<'PYEOF'
 import sys
 
 

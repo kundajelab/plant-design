@@ -10,11 +10,7 @@ is no separate bias-model stage and no post-hoc PyTorch conversion step
 `cherimoya` is a Linux-only core dependency of the `plant-design` project
 (its `torch>=2.9`/`triton>=3.5.1` requirement has no macOS wheels), so
 training and negative sampling both run via `uv run` on a Linux GPU
-machine by default -- no separate container needed. On clusters where the
-system toolchain can't build/resolve that requirement (e.g. Sherlock, see
-`pyproject.toml`'s `pybigtools==0.2.5` pin), pass `--apptainer` to run jobs
-against the Cherimoya Apptainer image instead (see
-[`../apptainer/`](../apptainer/README.md)).
+machine.
 
 ## Inputs
 
@@ -29,8 +25,7 @@ data/<species>/peaks{_dataset}/<pseudobulk>_peaks.narrowPeak
 data/<species>/bigwigs{_dataset}/<pseudobulk>.bw
 ```
 
-`--species` defaults to `S.bicolor`, which keeps today's flat, un-namespaced
-`data/`/`configs/` layout (see `src/species_config.py`).
+`--species` defaults to `S.bicolor` (see `src/species_config.py`).
 
 For `--dataset base`, paths omit the dataset suffix (`data/<species>/peaks/`,
 `.../bigwigs/`, `.../negatives/`, `models/<species>/`). For `--dataset coarse`
@@ -45,21 +40,18 @@ filtering already restricts both peaks and negatives to the active fold.
 
 ```bash
 uv run python src/cherimoya_pipeline/fit/negatives.py
-uv run python src/cherimoya_pipeline/fit/negatives.py --species A.thaliana --interactive | parallel
+uv run python src/cherimoya_pipeline/fit/negatives.py --species A.thaliana | parallel
 ```
 
 ## Train
 
+No SLURM integration: `launch.py` collects pseudobulk/fold jobs with a
+missing model checkpoint and prints one command per job to stdout.
+
 ```bash
-uv run python src/cherimoya_pipeline/fit/launch.py
+uv run python src/cherimoya_pipeline/fit/launch.py | parallel -j 4
 uv run python src/cherimoya_pipeline/fit/launch.py --dataset coarse
 uv run python src/cherimoya_pipeline/fit/launch.py -p bundle_sheath -f 0
-```
-
-Interactive mode prints one command per missing job:
-
-```bash
-uv run python src/cherimoya_pipeline/fit/launch.py --interactive | parallel -j 4
 ```
 
 Useful training knobs (see `train_cherimoya.py --help` for the full list):
@@ -73,9 +65,9 @@ uv run python src/cherimoya_pipeline/fit/launch.py \
     --negative-ratio 0.25
 ```
 
-`train_cherimoya.py` is the actual training entrypoint; run it directly
-(outside SLURM) for local debugging on a Linux GPU machine. It resolves our
-species/fold paths into a JSON parameters file (saved alongside the model as
+`train_cherimoya.py` is the actual training entrypoint; run it directly for
+local debugging on a Linux GPU machine. It resolves our species/fold paths
+into a JSON parameters file (saved alongside the model as
 `<pseudobulk>_f<fold>.fit_params.json`) and shells out to `cherimoya fit -p
 <file>` rather than reimplementing its optimizer/scheduler setup -- that CLI
 also runs its own evaluate step on `validation_chroms` afterward, writing
@@ -83,24 +75,5 @@ also runs its own evaluate step on `validation_chroms` afterward, writing
 (not a substitute for `benchmark.py`'s held-out test-chromosome
 evaluation).
 
-Use `--help` on `negatives.py`/`launch.py` for SLURM resource flags,
-including `--cpus-per-task`, `--gpus`, `--time`, `--mem`, `--dry-run`, and
-`--rerun`.
-
-## Running via Apptainer
-
-```bash
-uv run python src/cherimoya_pipeline/fit/negatives.py --apptainer --interactive | parallel
-uv run python src/cherimoya_pipeline/fit/launch.py --apptainer
-uv run python src/cherimoya_pipeline/fit/launch.py \
-    --apptainer \
-    --apptainer-image /scratch/users/$USER/apptainer/cherimoya.sif
-```
-
-`--apptainer` runs each job's Python entrypoint via `apptainer exec --nv`
-against the Cherimoya Apptainer image instead of `uv run --frozen`.
-`--apptainer-image` defaults to `$CHERIMOYA_APPTAINER_IMAGE`, or
-`/scratch/users/$USER/apptainer/cherimoya.sif` if that's unset;
-`--apptainer-bind` (repeatable, default: the repo root) controls what's
-mounted into the container. See
-[`../apptainer/README.md`](../apptainer/README.md) for building the image.
+Use `--help` on `negatives.py`/`launch.py` for job selection flags, including
+`-p`/`--pseudobulk`, `-f`/`--fold`, `--dataset`, and `--rerun`.

@@ -11,23 +11,23 @@ Python dependencies are managed by `uv`, so invoke Python entrypoints with
 Required shared inputs:
 
 ```text
-data/Sbicolor_730_v5.0.fa
-configs/pseudobulks.txt
-configs/pseudobulks_fine.txt
-configs/pseudobulks_coarse.txt
-configs/chrom_splits.json
+data/S.bicolor/Sbicolor_730_v5.0.fa
+configs/S.bicolor/pseudobulks.txt
+configs/S.bicolor/pseudobulks_fine.txt
+configs/S.bicolor/pseudobulks_coarse.txt
+configs/S.bicolor/chrom_splits.json
 ```
 
 For all-peak attributions, each dataset also needs filtered peak files:
 
 ```text
-data/peaks/<pseudobulk>_peaks_ACGT.narrowPeak
-data/peaks_fine/<pseudobulk>_peaks_ACGT.narrowPeak
-data/peaks_coarse/<pseudobulk>_peaks_ACGT.narrowPeak
+data/S.bicolor/peaks/<pseudobulk>_peaks_ACGT.narrowPeak
+data/S.bicolor/peaks_fine/<pseudobulk>_peaks_ACGT.narrowPeak
+data/S.bicolor/peaks_coarse/<pseudobulk>_peaks_ACGT.narrowPeak
 ```
 
 For DA-peak attributions, run differential accessibility first so these files
-exist under `data/peaks/differential_accessibility/`.
+exist under `data/S.bicolor/peaks/differential_accessibility/`.
 
 ## Filter Peaks
 
@@ -37,10 +37,10 @@ Filter all-peak BEDs to windows with only A/C/G/T bases.
 while read -r pseudobulk; do
     test -n "${pseudobulk}" || continue
     uv run python src/cherimoya_pipeline/attribute/filter_nonACGT_regions.py -v \
-        -f data/Sbicolor_730_v5.0.fa \
-        -b "data/peaks/${pseudobulk}_peaks.narrowPeak" \
-        -o "data/peaks/${pseudobulk}_peaks_ACGT.narrowPeak"
-done < configs/pseudobulks.txt
+        -f data/S.bicolor/Sbicolor_730_v5.0.fa \
+        -b "data/S.bicolor/peaks/${pseudobulk}_peaks.narrowPeak" \
+        -o "data/S.bicolor/peaks/${pseudobulk}_peaks_ACGT.narrowPeak"
+done < configs/S.bicolor/pseudobulks.txt
 ```
 
 For fine or coarse datasets, change both the config and peak directory:
@@ -50,23 +50,23 @@ dataset=fine
 while read -r pseudobulk; do
     test -n "${pseudobulk}" || continue
     uv run python src/cherimoya_pipeline/attribute/filter_nonACGT_regions.py -v \
-        -f data/Sbicolor_730_v5.0.fa \
-        -b "data/peaks_${dataset}/${pseudobulk}_peaks.narrowPeak" \
-        -o "data/peaks_${dataset}/${pseudobulk}_peaks_ACGT.narrowPeak"
-done < "configs/pseudobulks_${dataset}.txt"
+        -f data/S.bicolor/Sbicolor_730_v5.0.fa \
+        -b "data/S.bicolor/peaks_${dataset}/${pseudobulk}_peaks.narrowPeak" \
+        -o "data/S.bicolor/peaks_${dataset}/${pseudobulk}_peaks_ACGT.narrowPeak"
+done < "configs/S.bicolor/pseudobulks_${dataset}.txt"
 ```
 
 To run the filter jobs in parallel, print commands and pipe them:
 
 ```bash
 dataset=base
-config="configs/pseudobulks.txt"
-peaks_dir="data/peaks"
+config="configs/S.bicolor/pseudobulks.txt"
+peaks_dir="data/S.bicolor/peaks"
 
 while read -r pseudobulk; do
     test -n "${pseudobulk}" || continue
     printf '%q ' uv run python src/cherimoya_pipeline/attribute/filter_nonACGT_regions.py -v \
-        -f data/Sbicolor_730_v5.0.fa \
+        -f data/S.bicolor/Sbicolor_730_v5.0.fa \
         -b "${peaks_dir}/${pseudobulk}_peaks.narrowPeak" \
         -o "${peaks_dir}/${pseudobulk}_peaks_ACGT.narrowPeak"
     printf '\n'
@@ -77,13 +77,13 @@ For coarse/fine datasets:
 
 ```bash
 dataset=coarse
-config="configs/pseudobulks_${dataset}.txt"
-peaks_dir="data/peaks_${dataset}"
+config="configs/S.bicolor/pseudobulks_${dataset}.txt"
+peaks_dir="data/S.bicolor/peaks_${dataset}"
 
 while read -r pseudobulk; do
     test -n "${pseudobulk}" || continue
     printf '%q ' uv run python src/cherimoya_pipeline/attribute/filter_nonACGT_regions.py -v \
-        -f data/Sbicolor_730_v5.0.fa \
+        -f data/S.bicolor/Sbicolor_730_v5.0.fa \
         -b "${peaks_dir}/${pseudobulk}_peaks.narrowPeak" \
         -o "${peaks_dir}/${pseudobulk}_peaks_ACGT.narrowPeak"
     printf '\n'
@@ -98,7 +98,7 @@ Save one-hot encoded sequence arrays once per pseudobulk before attribution:
 while read -r pseudobulk; do
     test -n "${pseudobulk}" || continue
     uv run python src/cherimoya_pipeline/attribute/save_ohe.py -v -p "${pseudobulk}"
-done < configs/pseudobulks.txt
+done < configs/S.bicolor/pseudobulks.txt
 ```
 
 For fine or coarse datasets:
@@ -110,7 +110,7 @@ while read -r pseudobulk; do
     uv run python src/cherimoya_pipeline/attribute/save_ohe.py -v \
         --dataset "${dataset}" \
         -p "${pseudobulk}"
-done < "configs/pseudobulks_${dataset}.txt"
+done < "configs/S.bicolor/pseudobulks_${dataset}.txt"
 ```
 
 For base-dataset DA peak attributions, create the DA BEDs first:
@@ -129,12 +129,16 @@ while read -r pseudobulk; do
     uv run python src/cherimoya_pipeline/attribute/save_ohe.py -v \
         -p "${pseudobulk}" \
         --da-peaks specific_union
-done < configs/pseudobulks.txt
+done < configs/S.bicolor/pseudobulks.txt
 ```
 
 Other supported DA peak sets are `tau`, `pairwise`, and `pairwise_higher`.
 
 ## Launch DeepLIFT/SHAP Jobs
+
+No SLURM integration: `launch.py` collects and prints one `deepliftshap.py`
+command per (pseudobulk, head) pair whose output is missing; pipe into
+`parallel` or run directly.
 
 All base all-peak attributions:
 
@@ -145,17 +149,14 @@ uv run python src/cherimoya_pipeline/attribute/launch.py
 Fine or coarse all-peak attributions:
 
 ```bash
-uv run python src/cherimoya_pipeline/attribute/launch.py \
-    --dataset coarse \
-    --time 24:00:00
+uv run python src/cherimoya_pipeline/attribute/launch.py --dataset coarse
 ```
 
 Base DA-specific attribution jobs:
 
 ```bash
 uv run python src/cherimoya_pipeline/attribute/launch.py \
-    --da-peaks specific_union \
-    --time 6:00:00
+    --da-peaks specific_union
 ```
 
 Finetuned and adapter DA-specific runs:
@@ -163,26 +164,20 @@ Finetuned and adapter DA-specific runs:
 ```bash
 uv run python src/cherimoya_pipeline/attribute/launch.py \
     --da-peaks specific_union \
-    --finetuned \
-    --time 6:00:00
+    --finetuned
 
 uv run python src/cherimoya_pipeline/attribute/launch.py \
     --da-peaks specific_union \
     --finetuned \
-    --da-fraction 0.8 \
-    --time 6:00:00
+    --da-fraction 0.8
 
 uv run python src/cherimoya_pipeline/attribute/launch.py \
     --da-peaks specific_union \
     --adapter \
-    --da-fraction 0.5 \
-    --time 6:00:00
+    --da-fraction 0.5
 
 uv run python src/cherimoya_pipeline/attribute/launch.py \
     --da-peaks specific_union \
     --adapter \
-    --da-fraction 0.8 \
-    --time 6:00:00
+    --da-fraction 0.8
 ```
-
-Use `--dry-run` to inspect SLURM scripts before submitting.

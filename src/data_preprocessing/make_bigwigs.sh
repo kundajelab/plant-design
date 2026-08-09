@@ -5,18 +5,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 species="${SPECIES:-S.bicolor}"
-if [[ "${species}" == "S.bicolor" ]]; then
-    data_root="${REPO_ROOT}/data"
-    config_dir="${REPO_ROOT}/configs"
-else
-    data_root="${REPO_ROOT}/data/${species}"
-    config_dir="${REPO_ROOT}/configs/${species}"
-fi
+data_root="${REPO_ROOT}/data/${species}"
+config_dir="${REPO_ROOT}/configs/${species}"
 
 data_dir="${DATA_DIR:-/oak/stanford/projects/sorghum/SwiftMultiomeReanalysis/pseudobulk_fragments}"
 ref_dir="${REF_DIR:-/oak/stanford/projects/sorghum/genomes/SbicolorJGIv5.1}"
 out_dir="${OUT_DIR:-${data_root}/bigwigs}"
-genome_name="${GENOME_FASTA_NAME:-Sbicolor_730_v5.0.fa}"
+# Resolved from configs/<species>/species.json (the same manifest
+# species_config.genome_fasta() reads) unless overridden. Must NOT default
+# to Sorghum's filename here -- SPECIES=A.thaliana without this would
+# silently look for data/A.thaliana/Sbicolor_730_v5.0.fa instead of
+# Athaliana_TAIR10.fa.
+species_json="${config_dir}/species.json"
+genome_name="${GENOME_FASTA_NAME:-$(python -c "
+import json, sys
+print(json.load(open(sys.argv[1]))['genome_fasta'])
+" "${species_json}")}"
 genome_fasta="${data_root}/${genome_name}"
 chrom_sizes="${genome_fasta%.fa}.chrom.sizes"
 pseudobulks_file="${PSEUDOBULKS_FILE:-${config_dir}/pseudobulks.txt}"

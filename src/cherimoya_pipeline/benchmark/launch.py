@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch SLURM benchmark jobs for active Cherimoya model variants.
+"""Collect and print unfinished Cherimoya benchmark jobs for active model variants.
 
 This launcher covers the main reporting path:
 
@@ -10,16 +10,13 @@ This launcher covers the main reporting path:
 Development-only adapter parameter sweeps are handled separately by
 ``benchmark_lora_sweep.py``.
 
-By default, jobs run via `uv run --frozen` inside the shared plant-design
-environment. Pass --apptainer to instead run via `apptainer exec --nv`
-against the Cherimoya Apptainer image (see ../apptainer/), for clusters
-whose system toolchain can't build/resolve cherimoya's
-torch>=2.9/triton>=3.5.1 requirement.
+Prints one shell command per missing benchmark output; pipe into `parallel`
+or run directly. Jobs run via `uv run --frozen` inside the shared
+plant-design environment.
 """
 
 import argparse
 import shlex
-import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,12 +25,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 import species_config
 
-sys.path.insert(0, str(REPO_ROOT / "src" / "cherimoya_pipeline"))
-import apptainer_launcher
-
 BENCHMARK_DIR = REPO_ROOT / "src" / "cherimoya_pipeline" / "benchmark"
 DATASETS = ("base", "fine", "coarse")
-# Overridden in main() when --apptainer is set.
 PYTHON = ("uv", "run", "--frozen", "python")
 
 
@@ -101,15 +94,6 @@ VARIANTS = {
 }
 
 
-def slurm_name(text):
-    return (
-        text.replace("/", "_")
-        .replace(".", "p")
-        .replace("+", "_")
-        .replace("-", "_")
-    )
-
-
 def existing_cross_path(species, dataset_name, variant, pseudobulk):
     metrics_root = species_config.performance_metrics_dir(species)
     metrics_subdir = (
@@ -145,8 +129,7 @@ def benchmark_da_peaks_path(da_path):
 
 
 def build_variant_job(args, species, variant):
-    cross = []
-    serial = []
+    commands = []
     skipped = 0
 
     for pseudobulk in args.pseudobulks:
@@ -173,7 +156,7 @@ def build_variant_job(args, species, variant):
             cmd.append("--save-output")
         if args.verbose:
             cmd.append("-v")
-        cross.append(" ".join(shlex.quote(str(part)) for part in cmd))
+        commands.append(" ".join(shlex.quote(str(part)) for part in cmd))
 
     da_path = existing_da_path(species, args.dataset, variant)
     da_done = da_path is not None and (
@@ -195,21 +178,16 @@ def build_variant_job(args, species, variant):
             cmd.append("--save-output")
         if args.verbose:
             cmd.append("-v")
-        serial.append(" ".join(shlex.quote(str(part)) for part in cmd))
+        commands.append(" ".join(shlex.quote(str(part)) for part in cmd))
     else:
         skipped += 1
 
     if args.dataset != "base":
-        return {
-            "job_name": slurm_name(f"benchmark_{args.dataset}_{variant.name}"),
-            "cross": cross,
-            "serial": serial,
-            "skipped": skipped,
-        }
+        return commands, skipped
 
     pairwise_path = species_config.performance_metrics_dir(species) / variant.pairwise_path
     if not pairwise_path.exists() or args.rerun:
-        serial.append(
+        commands.append(
             " ".join(
                 shlex.quote(str(part))
                 for part in [
@@ -224,80 +202,21 @@ def build_variant_job(args, species, variant):
     else:
         skipped += 1
 
-    return {
-        "job_name": slurm_name(f"benchmark_{args.dataset}_{variant.name}"),
-        "cross": cross,
-        "serial": serial,
-        "skipped": skipped,
-    }
+    return commands, skipped
 
 
-def make_run_block(job):
-    commands = job["cross"] + job["serial"]
-    return "\n\n".join(f"time {cmd}" for cmd in commands)
-
-
-def make_sbatch_script(args, job, log_dir):
-    run_block = make_run_block(job)
-    return f"""#!/bin/bash -l
-#SBATCH --job-name={job["job_name"]}
-#SBATCH --ntasks=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --nodes=1
-#SBATCH --gpus=1
-#SBATCH -C {args.constraint}
-#SBATCH --cpus-per-task={args.cpus_per_task}
-#SBATCH --mem={args.mem}
-#SBATCH --partition={args.partition}
-#SBATCH --time={args.time}
-#SBATCH --output={log_dir}/{job["job_name"]}.out
-#SBATCH --error={log_dir}/{job["job_name"]}.err
-
-source ~/bs.sh
-mamba activate plant-design
-export NUMBA_NUM_THREADS={args.numba_threads}
-nvidia-smi -L
-
-{run_block}
-"""
-
-
-def submit_jobs(args, jobs):
-    log_dir = REPO_ROOT / "logs" / "cherimoya_benchmark"
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-    submitted = 0
-    skipped_empty = 0
-    for job in jobs:
-        n_commands = len(job["cross"]) + len(job["serial"])
-        if n_commands == 0:
-            skipped_empty += 1
-            continue
-
-        script = make_sbatch_script(args, job, log_dir)
-        if args.interactive:
-            for command in job["cross"] + job["serial"]:
-                print(command)
-            continue
-        if args.dry_run:
-            print(f"--- {job['job_name']} ({n_commands} commands, skipped {job['skipped']}) ---")
-            print(script)
-            submitted += 1
-            continue
-
-        result = subprocess.run(["sbatch"], input=script, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"ERROR submitting {job['job_name']}: {result.stderr}", file=sys.stderr)
-            continue
-        submitted += 1
-        print(f"{job['job_name']}: {result.stdout.strip()}")
-
-    if args.interactive:
-        return
-    if args.dry_run:
-        print(f"\nDry run: generated {submitted} sbatch job(s); skipped {skipped_empty} empty job group(s).")
-    else:
-        print(f"\nSubmitted {submitted} sbatch job(s); skipped {skipped_empty} empty job group(s).")
+def print_jobs(jobs):
+    printed = 0
+    skipped = 0
+    for commands, n_skipped in jobs:
+        for command in commands:
+            print(command)
+            printed += 1
+        skipped += n_skipped
+    print(
+        f"\nPrinted {printed} command(s); skipped {skipped} already-complete step(s).",
+        file=sys.stderr,
+    )
 
 
 def main():
@@ -325,12 +244,6 @@ def main():
         help="Dataset namespace to benchmark (default: base).",
     )
     parser.add_argument("--rerun", action="store_true")
-    parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument(
-        "--interactive",
-        action="store_true",
-        help="Print missing uv run benchmark commands without sbatch wrappers.",
-    )
     parser.add_argument("--save-cross-outputs", action="store_true")
     parser.add_argument(
         "--no-save-da-outputs",
@@ -340,18 +253,8 @@ def main():
     )
     parser.set_defaults(save_da_outputs=True)
     parser.add_argument("-b", "--batch-size", type=int, default=64)
-    parser.add_argument("--partition", type=str, default="akundaje,gpu,owners")
-    parser.add_argument("--constraint", type=str, default="GPU_GEN:AMP|GPU_GEN:LOV|GPU_GEN:HPR")
-    parser.add_argument("--cpus-per-task", type=int, default=4)
-    parser.add_argument("--mem", type=str, default="32G")
-    parser.add_argument("--time", type=str, default="2:00:00")
-    parser.add_argument("--numba-threads", type=int, default=4)
     parser.add_argument("-v", "--verbose", action="store_true")
-    apptainer_launcher.add_apptainer_args(parser)
     args = parser.parse_args()
-
-    global PYTHON
-    PYTHON = (*apptainer_launcher.resolve_run_prefix(args, REPO_ROOT), "python")
 
     species = species_config.resolve_species(args.species)
     choices = species_config.read_pseudobulks(species, args.dataset)
@@ -366,7 +269,7 @@ def main():
             sys.exit(1)
     variant_names = args.variant or (["base"] if args.dataset != "base" else list(VARIANTS))
     jobs = [build_variant_job(args, species, VARIANTS[name]) for name in variant_names]
-    submit_jobs(args, jobs)
+    print_jobs(jobs)
 
 
 if __name__ == "__main__":

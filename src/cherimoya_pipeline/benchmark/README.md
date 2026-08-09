@@ -6,17 +6,17 @@ Python environment through `uv`.
 ## Inputs
 
 ```text
-data/Sbicolor_730_v5.0.fa
-data/bigwigs{_dataset}/<pseudobulk>.bw
-data/peaks{_dataset}/<pseudobulk>_peaks.narrowPeak
-data/peaks{_dataset}/differential_accessibility/da_peaks.csv
-models/{dataset/}<pseudobulk>/<pseudobulk>_f<fold>.torch
-configs/pseudobulks{_dataset}.txt
-configs/fold_0.json ... configs/fold_4.json
+data/<species>/<genome>.fa
+data/<species>/bigwigs{_dataset}/<pseudobulk>.bw
+data/<species>/peaks{_dataset}/<pseudobulk>_peaks.narrowPeak
+data/<species>/peaks{_dataset}/differential_accessibility/da_peaks.csv
+models/<species>/{dataset/}<pseudobulk>/<pseudobulk>_f<fold>.torch
+configs/<species>/pseudobulks{_dataset}.txt
+configs/<species>/fold_0.json ... fold_4.json
 ```
 
-For non-base datasets, outputs add the dataset suffix, for example
-`performance_metrics/cherimoya_coarse/`.
+`--species` defaults to `S.bicolor`. For non-base datasets, outputs add the
+dataset suffix, for example `performance_metrics/<species>/cherimoya_coarse/`.
 
 ## Single Model Benchmarks
 
@@ -51,14 +51,15 @@ uv run python src/cherimoya_pipeline/benchmark/benchmark_da.py --dataset fine
 Main outputs:
 
 ```text
-performance_metrics/differential_accessibility/da_benchmark.json
-performance_metrics/differential_accessibility_coarse/da_benchmark.json
-performance_metrics/differential_accessibility_fine/da_benchmark.json
+performance_metrics/<species>/differential_accessibility/da_benchmark.json
+performance_metrics/<species>/differential_accessibility_coarse/da_benchmark.json
+performance_metrics/<species>/differential_accessibility_fine/da_benchmark.json
 ```
 
 ## Launcher
 
-Submit the standard benchmark set:
+Collect and print the standard benchmark set's unfinished commands (no SLURM
+integration; pipe into `parallel` or run directly):
 
 ```bash
 uv run python src/cherimoya_pipeline/benchmark/launch.py
@@ -71,12 +72,11 @@ uv run python src/cherimoya_pipeline/benchmark/launch.py --dataset coarse
 uv run python src/cherimoya_pipeline/benchmark/launch.py --dataset fine
 ```
 
-Print the commands instead of submitting jobs:
+Print jobs even if their output already exists:
 
 ```bash
 uv run python src/cherimoya_pipeline/benchmark/launch.py \
     --dataset coarse \
-    --interactive \
     --rerun
 ```
 
@@ -85,19 +85,6 @@ Use `--variant` to select a trained variant on the base dataset:
 ```bash
 uv run python src/cherimoya_pipeline/benchmark/launch.py --variant finetuned
 uv run python src/cherimoya_pipeline/benchmark/launch.py --variant adapter_0.8
-```
-
-By default, jobs run via `uv run --frozen` inside the shared `plant-design`
-environment. On clusters where the system toolchain can't build/resolve
-Cherimoya's `torch>=2.9`/`triton>=3.5.1` requirement (e.g. Sherlock), pass
-`--apptainer` to run jobs against the Cherimoya Apptainer image instead
-(see [`../apptainer/README.md`](../apptainer/README.md)):
-
-```bash
-uv run python src/cherimoya_pipeline/benchmark/launch.py --apptainer
-uv run python src/cherimoya_pipeline/benchmark/launch.py \
-    --apptainer \
-    --apptainer-image /scratch/users/$USER/apptainer/cherimoya.sif
 ```
 
 ## Plotting

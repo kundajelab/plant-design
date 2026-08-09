@@ -37,9 +37,9 @@ bash src/data_preprocessing/make_bigwigs_fine.sh
 bash src/data_preprocessing/make_bigwigs_coarse.sh
 ```
 
-Expected data layout under `data/` for the default species (`S.bicolor`):
+Expected data layout under `data/<species>/` (default species: `S.bicolor`):
 ```
-data/
+data/S.bicolor/
 ├── Sbicolor_730_v5.0.fa          # Sorghum v5 reference genome
 ├── peaks/<pseudobulk>_peaks.narrowPeak
 ├── peaks_fine/<pseudobulk>_peaks.narrowPeak
@@ -49,13 +49,13 @@ data/
 └── bigwigs_coarse/<pseudobulk>.bw
 ```
 
-Other species (`A.thaliana`, `O.sativa`) are namespaced under `data/<species>/`
-instead (see `src/species_config.py`); pass `--species <species>` to any
-Python entrypoint, or set `$SPECIES` for shell scripts.
+Every species (including the default) is namespaced under `data/<species>/`
+(see `src/species_config.py`); pass `--species <species>` to any Python
+entrypoint, or set `$SPECIES` for shell scripts.
 
 The base dataset is the default for training and analysis scripts. Use
 `--dataset fine` or `--dataset coarse` with Python entrypoints such as the
-SLURM launchers, `benchmark.py`, and DeepLIFT/SHAP scripts.
+job launchers, `benchmark.py`, and DeepLIFT/SHAP scripts.
 
 ### 2. Generate chromosome fold configs
 
@@ -74,8 +74,8 @@ BED file per pseudobulk (not per fold — chromosome-split filtering happens at
 train/predict time, not at negative-sampling time):
 
 ```bash
-uv run python src/cherimoya_pipeline/fit/negatives.py --interactive | parallel
-uv run python src/cherimoya_pipeline/fit/negatives.py --dataset fine --dry-run
+uv run python src/cherimoya_pipeline/fit/negatives.py | parallel
+uv run python src/cherimoya_pipeline/fit/negatives.py --dataset fine
 ```
 
 ### 4. Train Cherimoya models
@@ -84,13 +84,13 @@ Trains one model per pseudobulk per fold directly against raw bigwig signal —
 no bias model, no separate accessibility stage:
 
 ```bash
-uv run python src/cherimoya_pipeline/fit/launch.py --dataset fine --dry-run
-uv run python src/cherimoya_pipeline/fit/launch.py --dataset fine --interactive
+uv run python src/cherimoya_pipeline/fit/launch.py --dataset fine
 ```
 
-`--interactive` prints one local command per selected pseudobulk/fold to
-stdout, so it can be piped to `parallel`, `simple_gpu_scheduler`, or another
-local scheduler. `train_cherimoya.py` is the actual training entrypoint if you
+There's no SLURM integration: `launch.py` collects pseudobulk/fold jobs with
+a missing model checkpoint and prints one local command per job to stdout,
+so it can be piped to `parallel`, `simple_gpu_scheduler`, or another local
+scheduler. `train_cherimoya.py` is the actual training entrypoint if you
 want to run a single pseudobulk/fold directly for debugging.
 
 Models are saved to `models/<species>/<pseudobulk>/<pseudobulk>_f<fold>.torch`
@@ -108,12 +108,12 @@ uv run python src/cherimoya_pipeline/benchmark/benchmark.py -p <pseudobulk> --ad
 
 Options:
 - `-p` / `--pseudobulk`: one of `bundle_sheath`, `epidermis`, `guard`, `mesophyll`, `phloem`, `xylem`
-- `-o` / `--save-output`: save scaled predictions and signals to `predictions/cherimoya/<pseudobulk>.npz`
+- `-o` / `--save-output`: save scaled predictions and signals to `predictions/<species>/cherimoya/<pseudobulk>.npz`
 - `-b` / `--batch-size`: inference batch size (default: 64)
 - `--adapter`: benchmark the default daicon adapter run for the selected `--da-fraction`
 - `--adapter-sweep-id` / `--adapter-run-id`: benchmark an explicit adapter run ID
 
-Metrics (profile Pearson, Jensen-Shannon distance, log-counts Pearson, counts Spearman) are saved to `performance_metrics/cherimoya/<pseudobulk>.json`.
+Metrics (profile Pearson, Jensen-Shannon distance, log-counts Pearson, counts Spearman) are saved to `performance_metrics/<species>/cherimoya/<pseudobulk>.json`.
 
 ### 6. Differential accessibility
 
@@ -129,9 +129,9 @@ uv run python src/data_preprocessing/differential_accessibility.py --dataset fin
 Outputs are written under the matching peaks namespace:
 
 ```text
-data/peaks/differential_accessibility/
-data/peaks_coarse/differential_accessibility/
-data/peaks_fine/differential_accessibility/
+data/<species>/peaks/differential_accessibility/
+data/<species>/peaks_coarse/differential_accessibility/
+data/<species>/peaks_fine/differential_accessibility/
 ```
 
 These outputs are required for DA benchmarking and adapter fine-tuning.
@@ -203,13 +203,12 @@ written during training before the loop finishes.
 The legacy `finetune_adapters.py` CLI remains available as a compatibility
 wrapper around `finetune_da.py --mode adapter`.
 
-Use the standard launcher to submit full-model DA fine-tuning plus daicon
-adapter runs. It submits one SLURM job per run group, pseudobulk, and fold,
-with both 0.5 and 0.8 DA fractions by default:
+Use the standard launcher to collect and print full-model DA fine-tuning plus
+daicon adapter run commands, with both 0.5 and 0.8 DA fractions by default
+(no SLURM integration -- pipe into `parallel`/`simple_gpu_scheduler` or run
+directly):
 
 ```bash
-uv run python src/cherimoya_pipeline/da_finetuning/launch.py --dry-run
-
 uv run python src/cherimoya_pipeline/da_finetuning/launch.py \
     --run full \
     --run adapter
@@ -220,15 +219,11 @@ uv run python src/cherimoya_pipeline/da_finetuning/launch.py \
     --run adapter
 ```
 
-Use the sweep launcher for the broad adapter hyperparameter grid. It submits one
-SLURM job per pseudobulk/fold and uses the final `.log.tsv` as the completion
-marker:
+Use the sweep launcher for the broad adapter hyperparameter grid. It prints
+one command per pseudobulk/fold/hyperparameter combination and uses the
+final `.log.tsv` as the completion marker:
 
 ```bash
-uv run python src/cherimoya_pipeline/da_finetuning/launch_adapter_sweep.py \
-    --config configs/adapter_sweeps/smoke.json \
-    --dry-run
-
 uv run python src/cherimoya_pipeline/da_finetuning/launch_adapter_sweep.py \
     --config configs/adapter_sweeps/smoke.json
 ```
@@ -245,7 +240,6 @@ Benchmark the active model set (base, both full-finetuned models, and both
 default daicon adapter models):
 
 ```bash
-uv run python src/cherimoya_pipeline/benchmark/launch.py --dry-run
 uv run python src/cherimoya_pipeline/benchmark/launch.py
 ```
 

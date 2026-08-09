@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Submit standard DA fine-tuning jobs.
+"""Collect and print unfinished standard DA fine-tuning jobs.
 
 This launcher is for the small set of named runs used downstream:
 
@@ -7,15 +7,20 @@ This launcher is for the small set of named runs used downstream:
 - daicon adapter fine-tuning at 0.5 and 0.8 DA fractions
 
 Use ``launch_adapter_sweep.py`` for the full adapter hyperparameter sweep.
+
+Prints one shell command per job whose expected training log is missing;
+pipe into `parallel`/`simple_gpu_scheduler` or run directly.
 """
 
 import argparse
 import shlex
-import subprocess
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+import species_config
+
 DATASETS = ("base", "fine", "coarse")
 N_FOLDS = 5
 DA_FRACTIONS = (0.5, 0.8)
@@ -42,33 +47,15 @@ def quote_command(parts):
     return " ".join(shlex.quote(str(part)) for part in parts)
 
 
-def slurm_name(text):
-    return (
-        text.replace("/", "_")
-        .replace(".", "p")
-        .replace("+", "_")
-        .replace("-", "_")
-    )
-
-
-def dataset_suffix(dataset):
-    return "" if dataset == "base" else f"_{dataset}"
-
-
-def model_root(dataset):
-    root = REPO_ROOT / "models"
+def model_root(species, dataset):
+    root = species_config.models_dir(species)
     return root if dataset == "base" else root / dataset
 
 
-def load_pseudobulks(dataset, selected):
+def load_pseudobulks(species, dataset, selected):
     if selected is not None:
         return selected
-    path = REPO_ROOT / "configs" / f"pseudobulks{dataset_suffix(dataset)}.txt"
-    return [
-        p.strip()
-        for p in path.read_text().splitlines()
-        if p.strip() and not p.startswith("#")
-    ]
+    return species_config.read_pseudobulks(species, dataset)
 
 
 def common_training_args(args, lr):
@@ -88,11 +75,13 @@ def common_training_args(args, lr):
     ]
 
 
-def build_full_job(args, pseudobulk, fold, da_fraction):
+def build_full_job(args, species, pseudobulk, fold, da_fraction):
     script = REPO_ROOT / "src" / "cherimoya_pipeline" / "da_finetuning" / "finetune_da.py"
     command = [
         *PYTHON,
         script,
+        "--species",
+        species,
         "--dataset",
         args.dataset,
         "-p",
@@ -107,7 +96,7 @@ def build_full_job(args, pseudobulk, fold, da_fraction):
         "-v",
     ]
     finish_path = (
-        model_root(args.dataset)
+        model_root(species, args.dataset)
         / pseudobulk
         / full_tag(da_fraction)
         / f"{pseudobulk}_f{fold}.log"
@@ -120,12 +109,14 @@ def build_full_job(args, pseudobulk, fold, da_fraction):
     }
 
 
-def build_adapter_job(args, pseudobulk, fold, da_fraction):
+def build_adapter_job(args, species, pseudobulk, fold, da_fraction):
     script = REPO_ROOT / "src" / "cherimoya_pipeline" / "da_finetuning" / "finetune_da.py"
     run_id = default_adapter_run_id(da_fraction)
     command = [
         *PYTHON,
         script,
+        "--species",
+        species,
         "--dataset",
         args.dataset,
         "-p",
@@ -140,7 +131,7 @@ def build_adapter_job(args, pseudobulk, fold, da_fraction):
         "-v",
     ]
     finish_path = (
-        model_root(args.dataset)
+        model_root(species, args.dataset)
         / pseudobulk
         / "adapters"
         / run_id
@@ -154,8 +145,8 @@ def build_adapter_job(args, pseudobulk, fold, da_fraction):
     }
 
 
-def build_jobs(args):
-    pseudobulks = load_pseudobulks(args.dataset, args.pseudobulk)
+def build_jobs(args, species):
+    pseudobulks = load_pseudobulks(species, args.dataset, args.pseudobulk)
     folds = args.fold if args.fold is not None else list(range(N_FOLDS))
     da_fractions = args.da_fraction if args.da_fraction is not None else list(DA_FRACTIONS)
 
@@ -169,7 +160,7 @@ def build_jobs(args):
             for fold in folds:
                 key = (run_group, pseudobulk, fold)
                 jobs[key] = [
-                    builders[run_group](args, pseudobulk, fold, da_fraction)
+                    builders[run_group](args, species, pseudobulk, fold, da_fraction)
                     for da_fraction in da_fractions
                 ]
     return jobs
@@ -194,88 +185,24 @@ def print_finished_report(jobs):
     print(f"\nFinished {total_finished}/{total_expected} expected training logs.")
 
 
-def submit_jobs(args, jobs):
-    log_dir = REPO_ROOT / "logs" / "cherimoya_da_finetuning"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    submitted = 0
-    skipped_finished_jobs = 0
-    skipped_finished_commands = 0
-
-    for (run_group, pseudobulk, fold), entries in jobs.items():
-        commands = [
-            entry["command"]
-            for entry in entries
-            if args.rerun_finished or not entry["finish_path"].exists()
-        ]
-        skipped_finished_commands += len(entries) - len(commands)
-        if not commands:
-            skipped_finished_jobs += 1
-            continue
-
-        job_name = slurm_name(f"da_ft_{args.dataset}_{run_group}_{pseudobulk}_f{fold}")
-        command_text = "\n".join(commands)
-        if args.scheduler_gpus is None:
-            run_block = "\n".join(f"time {cmd}" for cmd in commands)
-        else:
-            gpu_args = " ".join(shlex.quote(gpu) for gpu in args.scheduler_gpus)
-            run_block = (
-                f"cat <<'COMMANDS' | simple_gpu_scheduler --gpus {gpu_args}\n"
-                f"{command_text}\n"
-                "COMMANDS"
-            )
-
-        sbatch_script = f"""#!/bin/bash -l
-#SBATCH --job-name={job_name}
-#SBATCH --ntasks=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --nodes=1
-#SBATCH --gpus={args.gpus}
-#SBATCH -C {args.constraint}
-#SBATCH --cpus-per-task={args.cpus_per_task}
-#SBATCH --mem={args.mem}
-#SBATCH --partition={args.partition}
-#SBATCH --time={args.time}
-#SBATCH --output={log_dir}/{job_name}.out
-#SBATCH --error={log_dir}/{job_name}.err
-
-source ~/bs.sh
-mamba activate plant-design
-export NUMBA_NUM_THREADS={args.numba_threads}
-nvidia-smi -L
-
-{run_block}
-"""
-
-        if args.dry_run:
-            print(f"--- {job_name} ({len(commands)} commands) ---")
-            print(sbatch_script)
-            submitted += 1
-            continue
-
-        result = subprocess.run(
-            ["sbatch"], input=sbatch_script, capture_output=True, text=True
-        )
-        if result.returncode != 0:
-            print(f"ERROR submitting {job_name}: {result.stderr}", file=sys.stderr)
-            continue
-        submitted += 1
-        print(f"{job_name}: {result.stdout.strip()}")
-
-    if args.dry_run:
-        print(f"\nDry run: generated {submitted} sbatch job(s).")
-    else:
-        print(f"\nSubmitted {submitted} sbatch job(s).")
-    if skipped_finished_commands:
-        print(
-            f"Skipped {skipped_finished_commands} finished command(s) "
-            f"across {skipped_finished_jobs} completed job group(s)."
-        )
+def print_jobs(args, jobs):
+    printed = 0
+    skipped = 0
+    for entries in jobs.values():
+        for entry in entries:
+            if args.rerun_finished or not entry["finish_path"].exists():
+                print(entry["command"])
+                printed += 1
+            else:
+                skipped += 1
+    print(f"\nPrinted {printed} command(s); skipped {skipped} finished command(s).", file=sys.stderr)
 
 
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
+    species_config.add_species_arg(parser)
     parser.add_argument(
         "--run",
         action="append",
@@ -310,16 +237,6 @@ def main():
     parser.add_argument("--jitter", type=int, default=200)
     parser.add_argument("--loss-alpha", type=int, default=100)
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="print sbatch scripts without submitting",
-    )
-    parser.add_argument(
-        "--interactive",
-        action="store_true",
-        help="print expanded python commands to stdout instead of submitting sbatch jobs",
-    )
-    parser.add_argument(
         "--check-finished",
         action="store_true",
         help="report expected training logs and exit",
@@ -329,49 +246,28 @@ def main():
         action="store_true",
         help="include commands whose expected training log already exists",
     )
-    parser.add_argument(
-        "--scheduler-gpus",
-        nargs="+",
-        default=None,
-        help="GPU IDs passed to simple_gpu_scheduler inside each sbatch job; omit to run commands sequentially",
-    )
-    parser.add_argument("--partition", type=str, default="gpu,akundaje,owners")
-    parser.add_argument(
-        "--constraint", type=str, default="GPU_GEN:AMP|GPU_GEN:LOV|GPU_GEN:HPR"
-    )
-    parser.add_argument("--gpus", type=int, default=1)
-    parser.add_argument("--cpus-per-task", type=int, default=4)
-    parser.add_argument("--mem", type=str, default="64G")
-    parser.add_argument("--time", type=str, default="2-00:00:00")
-    parser.add_argument("--numba-threads", type=int, default=4)
     args = parser.parse_args()
 
     if args.run is None:
         args.run = list(RUN_GROUPS)
-    choices = load_pseudobulks(args.dataset, None)
+    species = species_config.resolve_species(args.species)
+    choices = load_pseudobulks(species, args.dataset, None)
     selected = args.pseudobulk or choices
     unknown = [p for p in selected if p not in choices]
     if unknown:
         print(
-            f"Error: unknown pseudobulk(s) for dataset '{args.dataset}': "
-            f"{', '.join(unknown)}. Choose one of: {', '.join(choices)}",
+            f"Error: unknown pseudobulk(s) for species '{species}', dataset "
+            f"'{args.dataset}': {', '.join(unknown)}. Choose one of: {', '.join(choices)}",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    jobs = build_jobs(args)
+    jobs = build_jobs(args, species)
     if args.check_finished:
         print_finished_report(jobs)
         return
 
-    if args.interactive:
-        for entries in jobs.values():
-            for entry in entries:
-                if args.rerun_finished or not entry["finish_path"].exists():
-                    print(entry["command"])
-        return
-
-    submit_jobs(args, jobs)
+    print_jobs(args, jobs)
 
 
 if __name__ == "__main__":

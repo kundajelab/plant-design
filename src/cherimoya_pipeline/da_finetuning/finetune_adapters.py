@@ -6,14 +6,21 @@ wrapper preserves the historical adapter CLI used by sweep launchers.
 """
 
 import argparse
+import sys
+from pathlib import Path
 
 from finetune_da import DATASETS, main as finetune_da_main
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+import species_config
 
 
 def build_parser():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
+    species_config.add_species_arg(parser)
     parser.add_argument(
         "-p",
         "--pseudobulk",
@@ -72,6 +79,8 @@ def build_parser():
 
 def _main_argv(args):
     argv = [
+        "--species",
+        species_config.resolve_species(args.species),
         "--dataset",
         args.dataset,
         "-p",

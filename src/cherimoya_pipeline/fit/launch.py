@@ -1,37 +1,30 @@
 #!/usr/bin/env python3
-"""Submit Cherimoya training jobs to SLURM.
+"""Collect and print unfinished Cherimoya training jobs.
 
 Each job runs train_cherimoya.py for one pseudobulk/fold. Expects
 negatives.py to have already produced a negatives BED for every pseudobulk
-being trained.
+being trained. Prints one shell command per job with a missing model
+checkpoint; pipe into `parallel`, `simple_gpu_scheduler`, or run directly.
 
-By default, jobs run via `uv run --frozen` inside the shared plant-design
-environment. Pass --apptainer to instead run via `apptainer exec --nv`
-against the Cherimoya Apptainer image (see ../apptainer/), for clusters
-whose system toolchain can't build/resolve cherimoya's
-torch>=2.9/triton>=3.5.1 requirement.
+Jobs run via `uv run --frozen` inside the shared plant-design environment.
 """
 
 import argparse
-import re
 import sys
 
-from slurm_launcher import (
-    REPO_ROOT,
+from launcher_common import (
     add_common_args,
     cleanup_then_run,
+    print_jobs,
     resolve_dataset_and_jobs,
-    resolve_run_prefix,
-    submit_jobs,
 )
 
-sys.path.insert(0, str(REPO_ROOT / "src"))
 import species_config
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    add_common_args(parser, default_mem="64G", default_time="24:00:00")
+    add_common_args(parser)
     parser.add_argument("--n-filters", type=int, default=128)
     parser.add_argument("--n-layers", type=int, default=9)
     parser.add_argument("--max-epochs", type=int, default=50)
@@ -43,7 +36,6 @@ def parse_args():
 def main():
     args = parse_args()
     species, pseudobulks, folds = resolve_dataset_and_jobs(args)
-    log_dir = species_config.logs_dir(species) / "cherimoya_fit"
     model_root = species_config.models_dir(species)
     if args.dataset != "base":
         model_root = model_root / args.dataset
@@ -58,13 +50,10 @@ def main():
                 skipped += 1
                 continue
 
-            job_name = re.sub(
-                r"[^A-Za-z0-9_]",
-                "_",
-                f"cherimoya_{args.dataset}_{pseudobulk}_f{fold}".replace(".", "p"),
-            )
             command = [
-                *resolve_run_prefix(args),
+                "uv",
+                "run",
+                "--frozen",
                 "python",
                 "train_cherimoya.py",
                 "--species",
@@ -89,9 +78,9 @@ def main():
                 out_dir,
             ]
             command = cleanup_then_run([done_path], command)
-            jobs.append((job_name, command))
+            jobs.append((f"{pseudobulk}_f{fold}", command))
 
-    submit_jobs(args=args, log_dir=log_dir, jobs=jobs, label="cherimoya fit")
+    print_jobs(jobs=jobs, label="cherimoya fit")
     print(f"Skipped {skipped} completed fit job(s).", file=sys.stderr)
 
 
