@@ -71,8 +71,8 @@ def parse_args():
     parser.add_argument(
         "--n-warmup-epochs",
         type=int,
-        default=2,
-        help="Warmup epochs for the LR schedules (default: 2, cherimoya's own default).",
+        default=5,
+        help="Warmup epochs for the LR schedules (default: 5; cherimoya's own default is 2).",
     )
     parser.add_argument(
         "--negative-ratio",
