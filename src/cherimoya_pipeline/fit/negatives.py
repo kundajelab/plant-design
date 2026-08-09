@@ -5,6 +5,12 @@ Negatives are sampled genome-wide per pseudobulk (not per fold): Cherimoya's
 own `negatives` CLI has no chromosome-split concept, and PeakGenerator/
 extract_loci already restrict extraction to the active fold's chromosomes at
 train time, so one negatives BED per pseudobulk covers every fold.
+
+By default, jobs run via `uv run --frozen` inside the shared plant-design
+environment. Pass --apptainer to instead run via `apptainer exec --nv`
+against the Cherimoya Apptainer image (see ../apptainer/), for clusters
+whose system toolchain can't build/resolve cherimoya's
+torch>=2.9/triton>=3.5.1 requirement.
 """
 
 import argparse
@@ -16,6 +22,7 @@ from slurm_launcher import (
     add_common_args,
     cleanup_then_run,
     resolve_dataset_and_jobs,
+    resolve_run_prefix,
     submit_jobs,
 )
 
@@ -57,9 +64,7 @@ def main():
             f"negatives_{args.dataset}_{pseudobulk}".replace(".", "p"),
         )
         command = [
-            "uv",
-            "run",
-            "--frozen",
+            *resolve_run_prefix(args),
             "cherimoya",
             "negatives",
             "-i",

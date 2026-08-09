@@ -185,3 +185,9 @@ cython_debug/
 
 # Generated per-peak benchmark export (too large for Git)
 performance_metrics/differential_accessibility/da_benchmark_peaks.csv
+
+# Reference genomes and their indices (fetched/rsynced separately, too large for Git)
+data/**/*.fa
+data/**/*.fa.fai
+data/**/*.fasta
+data/**/*.chrom.sizes

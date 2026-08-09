@@ -10,6 +10,8 @@ Cherimoya trains a single model end-to-end directly on raw signal — there is n
 
 **Species** (`configs/<species>/`, see `src/species_config.py`): default `S.bicolor` (6 pseudobulk cell types in `configs/pseudobulks.txt`: bundle_sheath, epidermis, guard, mesophyll, phloem, xylem) keeps today's flat, un-namespaced `configs/`/`data/` layout for backward compatibility; `A.thaliana` and `O.sativa` are namespaced under `configs/<species>/`, `data/<species>/`, etc. Species are identified by Latin binomial everywhere (`--species` flag / `$SPECIES` env var).
 
+`A.thaliana` uses the `MoralesArabidopsis` root-atlas pseudobulk dataset (30 cell types in `configs/A.thaliana/pseudobulks.txt`, from `/oak/stanford/projects/sorghum/MoralesArabidopsis/pseudobulk_tracks/{peaks,fragments}/`) against the classic TAIR10 assembly (`data/A.thaliana/Athaliana_TAIR10.fa`, chromosomes `chr1`-`chr5`/`chrM`/`chrC` — see `src/data_preprocessing/download_arabidopsis_genome.sh`).
+
 ## Environment Setup
 
 A single `plant-design` environment (uv-managed) now covers the whole pipeline:
@@ -21,6 +23,8 @@ uv sync --frozen
 ```
 
 `cherimoya` is a **Linux-only** core dependency — it requires `torch>=2.9`/`triton>=3.5.1`, and `triton` has no macOS wheels at all. Training (`fit/`) only runs on Linux GPU machines; preprocessing, benchmarking, attribution, and DA finetuning work in the same env on any platform once a model exists.
+
+On HPC systems whose system toolchain can't build/resolve that requirement (e.g. Sherlock, see `pyproject.toml`'s `pybigtools==0.2.5` pin), the `fit/` and `benchmark/` SLURM launchers accept `--apptainer` to run jobs against a prebuilt Cherimoya Apptainer image instead of `uv run --frozen` (see `src/cherimoya_pipeline/apptainer/README.md`).
 
 ## Pipeline Execution Order
 
@@ -60,12 +64,20 @@ All `fit/`/`benchmark/`/`attribute/`/`modisco/`/`da_finetuning/` launchers accep
 
 Resolves `--species`/`$SPECIES` (default `S.bicolor`) to config/data/model/output directories. The default species keeps flat paths (`configs/`, `data/`, `models/`, ...); every other species is namespaced under a same-named subdirectory (`configs/A.thaliana/`, `data/A.thaliana/`, ...). Imported by essentially every script under `src/cherimoya_pipeline/` and `src/data_preprocessing/`.
 
+### `src/cherimoya_pipeline/apptainer_launcher.py`
+
+Shared `--apptainer`/`--apptainer-image`/`--apptainer-bind` CLI handling and run-prefix resolution (`uv run --frozen` by default, or `apptainer exec --nv` against the Cherimoya image) used by the `fit/` and `benchmark/` SLURM launchers.
+
+### `src/cherimoya_pipeline/apptainer/`
+
+`cherimoya.def`: Apptainer image definition bootstrapping from `pytorch/pytorch:2.13.0-cuda12.6-cudnn9-runtime` and installing Cherimoya + daicon `--no-deps` on top, for HPC systems whose system toolchain can't build/resolve Cherimoya's `torch>=2.9`/`triton>=3.5.1` requirement directly.
+
 ### `src/cherimoya_pipeline/fit/`
 
 - **`negatives.py`**: Submits SLURM jobs running Cherimoya's own `negatives` CLI (GC-matched sampling) to produce `data/<species>/negatives{_dataset}/<pseudobulk>_negatives.bed`, one per pseudobulk.
-- **`train_cherimoya.py`**: The actual training entrypoint. Builds a `Cherimoya` model via the Python API (`cherimoya.Cherimoya`/`cherimoya.io.PeakGenerator`) and trains it directly against raw bigwig signal. Reads `training_chroms`/`validation_chroms` from the existing `configs/<species>/fold_N.json` (`train`/`valid` keys); `test` is never touched here — held out entirely for `benchmark.py`. Saves to `models/<species>/<pseudobulk>/<pseudobulk>_f{fold}.torch` (Cherimoya's own config+state_dict checkpoint format, loaded via `Cherimoya.load()`).
+- **`train_cherimoya.py`**: The actual training entrypoint. Resolves our species/fold paths and hyperparameters into a `cherimoya_cli.defaults.default_fit_parameters`-shaped JSON file (saved alongside the model as `<pseudobulk>_f{fold}.fit_params.json`) and shells out to `cherimoya fit -p <file>`, rather than reimplementing its Muon/AdamW/SGD optimizer split and warmup+cosine schedules in Python. Reads `training_chroms`/`validation_chroms` from the existing `configs/<species>/fold_N.json` (`train`/`valid` keys); `test` is never touched here — held out entirely for `benchmark.py`. Saves to `models/<species>/<pseudobulk>/<pseudobulk>_f{fold}.torch` (Cherimoya's own config+state_dict checkpoint format, loaded via `Cherimoya.load()`); `cherimoya fit` also auto-runs its own evaluate step on `validation_chroms`, writing `<pseudobulk>_f{fold}.evaluate.json`/`.performance.tsv` as a side effect.
 - **`launch.py`**: SLURM launcher submitting `train_cherimoya.py` runs per pseudobulk/fold.
-- **`slurm_launcher.py`**: Shared job-submission helpers (species/dataset/pseudobulk/fold resolution, sbatch script generation, `--interactive`/`--dry-run` modes) used by both launchers above.
+- **`slurm_launcher.py`**: Shared job-submission helpers (species/dataset/pseudobulk/fold resolution, sbatch script generation, `--interactive`/`--dry-run`/`--apptainer` modes) used by both launchers above.
 
 ### `src/cherimoya_pipeline/benchmark/`
 

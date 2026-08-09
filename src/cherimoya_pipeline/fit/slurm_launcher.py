@@ -14,6 +14,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 import species_config
 
+sys.path.insert(0, str(REPO_ROOT / "src" / "cherimoya_pipeline"))
+import apptainer_launcher
+
 DATASET_NAMES = ("base", "fine", "coarse")
 
 
@@ -78,6 +81,13 @@ def add_common_args(
         default=None,
         help="NUMBA_NUM_THREADS for Cherimoya jobs. Defaults to --cpus-per-task.",
     )
+    apptainer_launcher.add_apptainer_args(parser)
+
+
+def resolve_run_prefix(args: argparse.Namespace) -> tuple[str, ...]:
+    """Command prefix to run an executable: `uv run --frozen`, or with
+    --apptainer, `apptainer exec --nv` against the Cherimoya image."""
+    return apptainer_launcher.resolve_run_prefix(args, REPO_ROOT)
 
 
 def validate_pseudobulk(species: str, dataset: str, pseudobulk: str) -> None:

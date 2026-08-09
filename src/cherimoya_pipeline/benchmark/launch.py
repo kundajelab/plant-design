@@ -9,6 +9,12 @@ This launcher covers the main reporting path:
 
 Development-only adapter parameter sweeps are handled separately by
 ``benchmark_lora_sweep.py``.
+
+By default, jobs run via `uv run --frozen` inside the shared plant-design
+environment. Pass --apptainer to instead run via `apptainer exec --nv`
+against the Cherimoya Apptainer image (see ../apptainer/), for clusters
+whose system toolchain can't build/resolve cherimoya's
+torch>=2.9/triton>=3.5.1 requirement.
 """
 
 import argparse
@@ -22,8 +28,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 import species_config
 
+sys.path.insert(0, str(REPO_ROOT / "src" / "cherimoya_pipeline"))
+import apptainer_launcher
+
 BENCHMARK_DIR = REPO_ROOT / "src" / "cherimoya_pipeline" / "benchmark"
 DATASETS = ("base", "fine", "coarse")
+# Overridden in main() when --apptainer is set.
 PYTHON = ("uv", "run", "--frozen", "python")
 
 
@@ -337,7 +347,11 @@ def main():
     parser.add_argument("--time", type=str, default="2:00:00")
     parser.add_argument("--numba-threads", type=int, default=4)
     parser.add_argument("-v", "--verbose", action="store_true")
+    apptainer_launcher.add_apptainer_args(parser)
     args = parser.parse_args()
+
+    global PYTHON
+    PYTHON = (*apptainer_launcher.resolve_run_prefix(args, REPO_ROOT), "python")
 
     species = species_config.resolve_species(args.species)
     choices = species_config.read_pseudobulks(species, args.dataset)

@@ -30,9 +30,46 @@ data/bigwigs_fine/
 
 `make_bigwigs.sh` converts pseudobulk fragment alignments into shifted bigWigs.
 It is cluster/path-specific, so inspect the source paths before running it on a
-new filesystem.
+new filesystem. `$SPECIES` selects the namespace (default `S.bicolor`); other
+knobs (`DATA_DIR`, `REF_DIR`, `GENOME_FASTA_NAME`, `OUT_DIR`,
+`FRAGMENTS_SUFFIX`, `PSEUDOBULKS_FILE`) override the per-species defaults. The
+genome rsync/faidx/chrom-sizes steps are skipped automatically if the genome
+is already present under `data/<species>/`, so species whose genome was
+fetched a different way (see "Arabidopsis" below) don't need a working
+`REF_DIR`.
 
 ```bash
+bash src/data_preprocessing/make_bigwigs.sh
+```
+
+### Arabidopsis (A.thaliana)
+
+The `MoralesArabidopsis` pseudobulk dataset lives at
+`/oak/stanford/projects/sorghum/MoralesArabidopsis/pseudobulk_tracks/` with
+`peaks/` and `fragments/` subdirectories; `configs/A.thaliana/pseudobulks.txt`
+lists its 30 cell types. Its fragment files are named
+`<pseudobulk>.fragments.tsv.gz` (dot separator), unlike Sorghum's
+`<pseudobulk>_fragments.tsv.gz`, so `FRAGMENTS_SUFFIX` must be overridden.
+
+Fetch the reference genome once (classic TAIR10 -- see
+`download_arabidopsis_genome.sh` for why this specific assembly, not the
+2023 RefSeq re-annotation, matches this dataset's chromosome sizes):
+
+```bash
+bash src/data_preprocessing/download_arabidopsis_genome.sh
+```
+
+Copy peaks and build bigWigs:
+
+```bash
+SPECIES=A.thaliana \
+DATASET=base \
+DATA_DIR=/oak/stanford/projects/sorghum/MoralesArabidopsis/pseudobulk_tracks/peaks \
+bash src/data_preprocessing/cp_peaks.sh
+
+SPECIES=A.thaliana \
+DATA_DIR=/oak/stanford/projects/sorghum/MoralesArabidopsis/pseudobulk_tracks/fragments \
+FRAGMENTS_SUFFIX=.fragments.tsv.gz \
 bash src/data_preprocessing/make_bigwigs.sh
 ```
 

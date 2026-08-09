@@ -87,6 +87,19 @@ uv run python src/cherimoya_pipeline/benchmark/launch.py --variant finetuned
 uv run python src/cherimoya_pipeline/benchmark/launch.py --variant adapter_0.8
 ```
 
+By default, jobs run via `uv run --frozen` inside the shared `plant-design`
+environment. On clusters where the system toolchain can't build/resolve
+Cherimoya's `torch>=2.9`/`triton>=3.5.1` requirement (e.g. Sherlock), pass
+`--apptainer` to run jobs against the Cherimoya Apptainer image instead
+(see [`../apptainer/README.md`](../apptainer/README.md)):
+
+```bash
+uv run python src/cherimoya_pipeline/benchmark/launch.py --apptainer
+uv run python src/cherimoya_pipeline/benchmark/launch.py \
+    --apptainer \
+    --apptainer-image /scratch/users/$USER/apptainer/cherimoya.sif
+```
+
 ## Plotting
 
 After metrics are present, generate summary figures:

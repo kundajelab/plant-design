@@ -13,6 +13,19 @@ fold_N["test"] is never touched here -- held out entirely for benchmark.py.
 Negatives are GC-matched regions pre-generated per pseudobulk by
 negatives.py (Cherimoya's own `negatives` CLI, not fold-specific).
 
+This resolves our paths/hyperparameters into a JSON parameters file and
+shells out to `cherimoya fit -p <file>` directly, rather than reimplementing
+its optimizer/scheduler setup (Muon for 2D projection weights, AdamW for
+everything else, SGD for the lw0/lw1 Kendall loss weights, warmup+cosine
+schedules) in Python -- that split is exactly what the CLI already does, so
+hand-rolling it here only risked drifting from Cherimoya's own recommended
+defaults. `cherimoya fit` also runs its own evaluate step on
+`validation_chroms` afterward, writing `{name}.evaluate.json`/
+`{name}.performance.tsv` alongside the model as a side effect; that's a
+validation-set sanity check, not a substitute for benchmark.py's held-out
+test-chromosome evaluation. The generated parameters JSON is kept next to
+the model for reproducibility.
+
 Usage:
     uv run python src/cherimoya_pipeline/fit/train_cherimoya.py -p bundle_sheath -f 0
     uv run python src/cherimoya_pipeline/fit/train_cherimoya.py --species A.thaliana -p mesophyll -f 2
@@ -20,22 +33,9 @@ Usage:
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
-
-import torch
-from cherimoya import Cherimoya
-from cherimoya.io import PeakGenerator
-from tangermeme.io import extract_loci
-from torch.optim import SGD, AdamW, Muon
-from torch.optim.lr_scheduler import (
-    ConstantLR,
-    CosineAnnealingLR,
-    LinearLR,
-    SequentialLR,
-)
-
-torch.backends.cudnn.benchmark = True
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -68,6 +68,12 @@ def parse_args():
     parser.add_argument("--max-epochs", type=int, default=50)
     parser.add_argument("--early-stopping", type=int, default=5)
     parser.add_argument("--max-jitter", type=int, default=500)
+    parser.add_argument(
+        "--n-warmup-epochs",
+        type=int,
+        default=2,
+        help="Warmup epochs for the LR schedules (default: 2, cherimoya's own default).",
+    )
     parser.add_argument(
         "--negative-ratio",
         type=float,
@@ -129,126 +135,47 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     name = str(output_dir / f"{args.pseudobulk}_f{args.fold}")
 
-    blacklist = [args.blacklist] if args.blacklist else None
+    exclusion_lists = [args.blacklist] if args.blacklist else None
 
-    print(f"Loading training data (chroms: {train_chroms})...")
-    train_data_loader = PeakGenerator(
-        peaks=peaks_path,
-        negatives=negatives_path,
-        sequences=fasta,
-        signals=[bw_path],
-        chroms=train_chroms,
-        in_window=IN_WINDOW,
-        out_window=OUT_WINDOW,
-        max_jitter=args.max_jitter,
-        reverse_complement=True,
-        shuffle=True,
-        random_state=args.random_state,
-        batch_size=args.batch_size,
-        verbose=args.verbose,
-        negative_ratio=args.negative_ratio,
-        exclusion_lists=blacklist,
-        pin_memory=True,
-        num_workers=0,
-    )
+    # Keys/shape follow cherimoya_cli.defaults.default_fit_parameters; any
+    # key we omit falls back to that CLI's own default via its
+    # merge_parameters(). signal_groups/n_control_tracks/trimming aren't
+    # set here -- `cherimoya fit` derives them itself from `signals`/
+    # `controls`/`in_window`/`out_window`.
+    parameters = {
+        "n_filters": args.n_filters,
+        "n_layers": args.n_layers,
+        "name": name,
+        "batch_size": args.batch_size,
+        "in_window": IN_WINDOW,
+        "out_window": OUT_WINDOW,
+        "max_jitter": args.max_jitter,
+        "reverse_complement": True,
+        "max_epochs": args.max_epochs,
+        "n_warmup_epochs": args.n_warmup_epochs,
+        "negative_ratio": args.negative_ratio,
+        "num_workers": 0,
+        "dtype": "float32",
+        "device": "cuda",
+        "early_stopping": args.early_stopping,
+        "verbose": args.verbose,
+        "training_chroms": train_chroms,
+        "validation_chroms": valid_chroms,
+        "sequences": fasta,
+        "loci": peaks_path,
+        "exclusion_lists": exclusion_lists,
+        "negatives": negatives_path,
+        "signals": [bw_path],
+        "controls": None,
+        "random_state": args.random_state,
+    }
 
-    print(f"Loading validation data (chroms: {valid_chroms})...")
-    X_valid, y_valid = extract_loci(
-        loci=peaks_path,
-        sequences=fasta,
-        signals=[bw_path],
-        chroms=valid_chroms,
-        in_window=IN_WINDOW,
-        out_window=OUT_WINDOW,
-        max_jitter=0,
-        ignore=list("QWERYUIOPSDFHJKLZXVBNM"),
-        exclusion_lists=blacklist,
-        verbose=args.verbose,
-    )
-    y_valid = torch.abs(y_valid)
+    params_path = Path(f"{name}.fit_params.json")
+    with open(params_path, "w") as f:
+        json.dump(parameters, f, indent=4)
+    print(f"Wrote {params_path}")
 
-    # torch.compile() unconditionally raises on Python 3.14+ before torch
-    # 2.10 (https://github.com/pytorch/pytorch/issues/169875); disable it
-    # automatically on that combination rather than crashing.
-    compile_supported = sys.version_info < (3, 14) or torch.__version__ >= "2.10"
-    model = Cherimoya(
-        name=name,
-        n_filters=args.n_filters,
-        signal_groups=[1],
-        n_control_tracks=0,
-        n_layers=args.n_layers,
-        trimming=(IN_WINDOW - OUT_WINDOW) // 2,
-        verbose=args.verbose,
-        compile=compile_supported,
-    )
-    model = model.to("cuda")
-
-    # Muon for 2D projection weights, AdamW for everything else, plain SGD
-    # for the lw0/lw1 Kendall uncertainty loss weights -- matches Cherimoya's
-    # own recommended optimizer split (cherimoya_cli fit command).
-    muon_params, adam_params, lw_params = [], [], []
-    for pname, p in model.named_parameters():
-        if pname in ("lw0", "lw1"):
-            lw_params.append(p)
-        elif (
-            p.ndim == 2
-            and "weight" in pname
-            and pname != "linear.weight"
-            and "conv_weight" not in pname
-        ):
-            muon_params.append(p)
-        else:
-            adam_params.append(p)
-
-    muon_optimizer = Muon(muon_params, lr=0.025, weight_decay=0.03)
-    adam_optimizer = AdamW(adam_params, lr=0.001, weight_decay=0.0)
-    lw_optimizer = SGD(lw_params, lr=0.001, weight_decay=0.0, momentum=0.9)
-
-    num_warmup_epochs = min(5, args.max_epochs)
-    num_warmup_iters = len(train_data_loader) * num_warmup_epochs
-    num_decay_iters = len(train_data_loader) * max(
-        1, args.max_epochs - num_warmup_epochs
-    )
-
-    def warmup_then_cosine(optimizer):
-        return SequentialLR(
-            optimizer,
-            schedulers=[
-                LinearLR(optimizer, start_factor=0.01, total_iters=num_warmup_iters),
-                CosineAnnealingLR(optimizer, T_max=num_decay_iters, eta_min=1e-5),
-            ],
-            milestones=[num_warmup_iters],
-        )
-
-    muon_scheduler = warmup_then_cosine(muon_optimizer)
-    adam_scheduler = warmup_then_cosine(adam_optimizer)
-    # Linear warmup then flat (no decay) for the Kendall loss weights.
-    lw_scheduler = SequentialLR(
-        lw_optimizer,
-        schedulers=[
-            LinearLR(lw_optimizer, start_factor=0.01, total_iters=num_warmup_iters),
-            ConstantLR(lw_optimizer, factor=1.0, total_iters=1),
-        ],
-        milestones=[num_warmup_iters],
-    )
-
-    model.fit(
-        training_data=train_data_loader,
-        muon_optimizer=muon_optimizer,
-        adam_optimizer=adam_optimizer,
-        lw_optimizer=lw_optimizer,
-        muon_scheduler=muon_scheduler,
-        adam_scheduler=adam_scheduler,
-        lw_scheduler=lw_scheduler,
-        X_valid=X_valid,
-        X_ctl_valid=None,
-        y_valid=y_valid,
-        max_epochs=args.max_epochs,
-        batch_size=args.batch_size,
-        early_stopping=args.early_stopping,
-        dtype=torch.float32,
-    )
-
+    subprocess.run(["cherimoya", "fit", "-p", str(params_path)], check=True)
     print(f"\nModel saved to {name}.torch")
 
 
