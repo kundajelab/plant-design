@@ -25,9 +25,13 @@ dependencies = [
     "numpy",
     "pandas",
     "pillow",
-    # Newer pybigtools releases can require source builds that fail on
-    # Sherlock's older assembler/toolchain.
-    "pybigtools==0.2.5",
+    # 0.2.5's `values()` only supports summary={mean,min,max}; tangermeme's
+    # GC-matched negative sampling (extract_matching_loci -> _extract_counts)
+    # calls it with summary="sum", which raises ValueError there, gets
+    # silently swallowed into NaN for every locus, and empties out the
+    # matched-loci result. summary="sum" was added in 0.3.0, which still
+    # ships a prebuilt manylinux_2_28 cp312 wheel (no source build needed).
+    "pybigtools==0.3.0",
     "pyfaidx",
     "pyyaml",
     "scikit-learn",

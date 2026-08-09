@@ -65,13 +65,14 @@ bash src/data_preprocessing/download_arabidopsis_genome.sh
 Copy peaks and build bigWigs:
 
 ```bash
+## REPLACE THIS WHEN PROJECT GOES PUBLIC WITH DIRECT DOWNLOADS FROM ZENODO/ETC
 SPECIES=A.thaliana \
 DATASET=base \
 DATA_DIR=/oak/stanford/projects/sorghum/MoralesArabidopsis/pseudobulk_tracks/peaks \
 bash src/data_preprocessing/cp_peaks.sh
 
 SPECIES=A.thaliana \
-DATA_DIR=/oak/stanford/projects/sorghum/MoralesArabidopsis/pseudobulk_tracks/fragments \
+DATA_DIR=/oak/stanford/groups/akundaje/ayhe/plant-design/data/A.thaliana/fragments \
 FRAGMENTS_SUFFIX=.fragments.tsv.gz \
 bash src/data_preprocessing/make_bigwigs.sh
 ```
@@ -90,9 +91,9 @@ uv run python src/data_preprocessing/differential_accessibility.py --dataset fin
 Outputs are written inside the selected peaks directory:
 
 ```text
-data/<species>/peaks/differential_accessibility/
-data/<species>/peaks_coarse/differential_accessibility/
-data/<species>/peaks_fine/differential_accessibility/
+data/peaks/differential_accessibility/
+data/peaks_coarse/differential_accessibility/
+data/peaks_fine/differential_accessibility/
 ```
 
 Main outputs:
@@ -122,9 +123,9 @@ If you need to regenerate only the pairwise-higher files from an existing
 
 ```bash
 uv run python src/data_preprocessing/write_pairwise_higher_beds.py \
-    --da data/S.bicolor/peaks/differential_accessibility/da_peaks.csv \
-    --out-dir data/S.bicolor/peaks/differential_accessibility \
-    --pseudobulks configs/S.bicolor/pseudobulks.txt
+    --da data/peaks/differential_accessibility/da_peaks.csv \
+    --out-dir data/peaks/differential_accessibility \
+    --pseudobulks configs/pseudobulks.txt
 ```
 
 For coarse or fine:
@@ -132,7 +133,7 @@ For coarse or fine:
 ```bash
 dataset=coarse
 uv run python src/data_preprocessing/write_pairwise_higher_beds.py \
-    --da "data/S.bicolor/peaks_${dataset}/differential_accessibility/da_peaks.csv" \
-    --out-dir "data/S.bicolor/peaks_${dataset}/differential_accessibility" \
-    --pseudobulks "configs/S.bicolor/pseudobulks_${dataset}.txt"
+    --da "data/peaks_${dataset}/differential_accessibility/da_peaks.csv" \
+    --out-dir "data/peaks_${dataset}/differential_accessibility" \
+    --pseudobulks "configs/pseudobulks_${dataset}.txt"
 ```
