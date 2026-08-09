@@ -31,7 +31,13 @@ def parse_args():
     parser.add_argument("--n-filters", type=int, default=128)
     parser.add_argument("--n-layers", type=int, default=9)
     parser.add_argument("--max-epochs", type=int, default=50)
-    parser.add_argument("--early-stopping", type=int, default=5)
+    parser.add_argument(
+        "--early-stopping",
+        type=int,
+        default=None,
+        help="Stop after this many epochs with no validation improvement "
+        "(default: disabled -- train the full --max-epochs).",
+    )
     parser.add_argument("--negative-ratio", type=float, default=0.25)
     return parser.parse_args()
 
@@ -73,13 +79,13 @@ def main():
                 args.n_layers,
                 "--max-epochs",
                 args.max_epochs,
-                "--early-stopping",
-                args.early_stopping,
                 "--negative-ratio",
                 args.negative_ratio,
                 "-o",
                 out_dir,
             ]
+            if args.early_stopping is not None:
+                command += ["--early-stopping", args.early_stopping]
             command = cleanup_then_run([done_path], command)
             jobs.append((f"{pseudobulk}_f{fold}", command))
 

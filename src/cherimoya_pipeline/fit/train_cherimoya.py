@@ -66,7 +66,13 @@ def parse_args():
     parser.add_argument("--n-layers", type=int, default=9)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--max-epochs", type=int, default=50)
-    parser.add_argument("--early-stopping", type=int, default=5)
+    parser.add_argument(
+        "--early-stopping",
+        type=int,
+        default=None,
+        help="Stop after this many epochs with no validation improvement "
+        "(default: disabled -- train the full --max-epochs).",
+    )
     parser.add_argument("--max-jitter", type=int, default=500)
     parser.add_argument(
         "--n-warmup-epochs",
