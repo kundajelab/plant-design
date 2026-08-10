@@ -27,7 +27,6 @@ DA_FRACTIONS = (0.5, 0.8)
 PYTHON = ("uv", "run", "--frozen", "python")
 
 RUN_GROUPS = ("full", "adapter")
-DEFAULT_FULL_LR = 1e-4
 DEFAULT_ADAPTER_LR = 1e-3
 
 
@@ -58,21 +57,22 @@ def load_pseudobulks(species, dataset, selected):
     return species_config.read_pseudobulks(species, dataset)
 
 
-def common_training_args(args, lr):
-    return [
+def common_training_args(args):
+    common = [
         "--epochs",
         args.epochs,
         "--patience",
         args.patience,
         "--batch-size",
         args.batch_size,
-        "--jitter",
-        args.jitter,
-        "--alpha",
-        args.loss_alpha,
-        "--lr",
-        lr,
+        "--max-jitter",
+        args.max_jitter,
+        "--negative-ratio",
+        args.negative_ratio,
     ]
+    if args.blacklist is not None:
+        common += ["--blacklist", args.blacklist]
+    return common
 
 
 def build_full_job(args, species, pseudobulk, fold, da_fraction):
@@ -92,7 +92,7 @@ def build_full_job(args, species, pseudobulk, fold, da_fraction):
         "full",
         "--da-fraction",
         da_fraction,
-        *common_training_args(args, args.full_lr),
+        *common_training_args(args),
         "-v",
     ]
     finish_path = (
@@ -127,7 +127,9 @@ def build_adapter_job(args, species, pseudobulk, fold, da_fraction):
         "adapter",
         "--da-fraction",
         da_fraction,
-        *common_training_args(args, args.adapter_lr),
+        *common_training_args(args),
+        "--lr",
+        args.adapter_lr,
         "-v",
     ]
     finish_path = (
@@ -220,22 +222,24 @@ def main():
     parser.add_argument("--fold", type=int, action="append", default=None)
     parser.add_argument("--da-fraction", type=float, action="append", default=None)
     parser.add_argument(
-        "--full-lr",
-        type=float,
-        default=DEFAULT_FULL_LR,
-        help=f"Learning rate for full-model fine-tuning (default: {DEFAULT_FULL_LR:g})",
-    )
-    parser.add_argument(
         "--adapter-lr",
         type=float,
         default=DEFAULT_ADAPTER_LR,
-        help=f"Learning rate for adapter fine-tuning (default: {DEFAULT_ADAPTER_LR:g})",
+        help=f"Learning rate for adapter fine-tuning (default: {DEFAULT_ADAPTER_LR:g}). "
+        "Full-model fine-tuning uses finetune_da.py's own "
+        "--muon-lr/--adam-lr/--lw-lr defaults instead.",
     )
-    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--patience", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--jitter", type=int, default=200)
-    parser.add_argument("--loss-alpha", type=int, default=100)
+    parser.add_argument("--max-jitter", type=int, default=500)
+    parser.add_argument("--negative-ratio", type=float, default=0.25)
+    parser.add_argument(
+        "--blacklist",
+        type=str,
+        default=None,
+        help="Optional BED of regions to exclude",
+    )
     parser.add_argument(
         "--check-finished",
         action="store_true",

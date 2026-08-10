@@ -62,12 +62,18 @@ def build_parser():
     parser.add_argument("--dropout", type=float, default=0.0)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=0.0)
-    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--patience", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--alpha", type=int, default=100)
-    parser.add_argument("--jitter", type=int, default=200)
+    parser.add_argument("--max-jitter", type=int, default=500)
     parser.add_argument("--da-fraction", type=float, default=0.5)
+    parser.add_argument("--negative-ratio", type=float, default=0.25)
+    parser.add_argument(
+        "--blacklist",
+        type=str,
+        default=None,
+        help="Optional BED of regions to exclude",
+    )
     parser.add_argument(
         "--materialize-model",
         action="store_true",
@@ -109,13 +115,15 @@ def _main_argv(args):
         str(args.patience),
         "--batch-size",
         str(args.batch_size),
-        "--alpha",
-        str(args.alpha),
-        "--jitter",
-        str(args.jitter),
+        "--max-jitter",
+        str(args.max_jitter),
         "--da-fraction",
         str(args.da_fraction),
+        "--negative-ratio",
+        str(args.negative_ratio),
     ]
+    if args.blacklist is not None:
+        argv.extend(["--blacklist", args.blacklist])
     if args.conv_alpha is not None:
         argv.extend(["--conv-scale", str(args.conv_alpha / args.conv_rank)])
     if args.linear_alpha is not None:

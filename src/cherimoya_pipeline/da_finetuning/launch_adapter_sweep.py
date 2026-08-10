@@ -33,11 +33,12 @@ DEFAULT_SWEEP = {
     "lr": [1e-4, 3e-4, 1e-3],
     "weight_decay": [0.0],
     "da_fraction": [0.5, 0.8],
-    "epochs": 100,
+    "epochs": 20,
     "patience": 10,
     "batch_size": 64,
-    "jitter": 200,
-    "loss_alpha": 100,
+    "max_jitter": 500,
+    "negative_ratio": 0.25,
+    "blacklist": None,
 }
 
 
@@ -170,12 +171,14 @@ def main():
                     str(sweep["patience"]),
                     "--batch-size",
                     str(sweep["batch_size"]),
-                    "--jitter",
-                    str(sweep["jitter"]),
-                    "--alpha",
-                    str(sweep["loss_alpha"]),
+                    "--max-jitter",
+                    str(sweep["max_jitter"]),
+                    "--negative-ratio",
+                    str(sweep["negative_ratio"]),
                     "-v",
                 ]
+                if sweep["blacklist"] is not None:
+                    cmd.extend(["--blacklist", str(sweep["blacklist"])])
                 if args.materialize_model:
                     cmd.append("--materialize-model")
                 log_path = (
