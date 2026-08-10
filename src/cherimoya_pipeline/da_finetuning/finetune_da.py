@@ -401,16 +401,18 @@ def train_finetune_model(
         with torch.no_grad():
             train_module.eval()
             # predict() from tangermeme batches X_valid and calls model.forward(),
-            # returning CPU tensors regardless of device.
+            # returning CPU tensors regardless of device -- matching
+            # cherimoya.fit()'s own validation step, this stays on CPU
+            # throughout rather than moving predictions/targets back to the
+            # GPU: the lw0/lw1 weighting only matters for the *training*
+            # loss, and model selection below uses valid_count_corr, not a
+            # weighted loss (cherimoya/cherimoya.py).
             y_profile_val, y_counts_val = predict(
                 model, X_valid, batch_size=batch_size, device=device
             )
             val_profile_loss_pg, val_count_loss_pg = _mixture_loss(
                 y_valid, y_profile_val, y_counts_val, signal_groups=model.signal_groups
             )
-            w0 = 1.0 / (2.0 * model.lw0**2)
-            w1 = 1.0 / (2.0 * model.lw1**2)
-            val_loss = (w0 * val_profile_loss_pg).sum() + (w1 * val_count_loss_pg).sum()
             val_profile_loss = val_profile_loss_pg.sum()
             val_count_loss = val_count_loss_pg.sum()
 
@@ -438,7 +440,6 @@ def train_finetune_model(
                 "train_count_loss": count_loss.item(),
                 "val_profile_loss": val_profile_loss.item(),
                 "val_count_loss": val_count_loss.item(),
-                "val_loss": val_loss.item(),
                 "valid_count_corr": valid_count_corr,
                 "saved": saved,
             }
@@ -449,7 +450,8 @@ def train_finetune_model(
                 f"    epoch {epoch}: "
                 f"train profile={profile_loss.item():.4f} "
                 f"count={count_loss.item():.4f} | "
-                f"val_loss={val_loss.item():.4f} "
+                f"val_profile={val_profile_loss.item():.4f} "
+                f"val_count={val_count_loss.item():.4f} "
                 f"val_count_corr={valid_count_corr:.4f}" + (" *" if saved else "")
             )
 
@@ -574,8 +576,8 @@ def build_parser():
     parser.add_argument(
         "--patience",
         type=int,
-        default=10,
-        help="Early stopping patience in epochs (default: 10)",
+        default=5,
+        help="Early stopping patience in epochs (default: 5)",
     )
     parser.add_argument(
         "--batch-size", type=int, default=64, help="Training batch size (default: 64)"

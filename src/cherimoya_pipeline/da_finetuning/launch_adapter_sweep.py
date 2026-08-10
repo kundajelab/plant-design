@@ -34,7 +34,7 @@ DEFAULT_SWEEP = {
     "weight_decay": [0.0],
     "da_fraction": [0.5, 0.8],
     "epochs": 20,
-    "patience": 10,
+    "patience": 5,
     "batch_size": 64,
     "max_jitter": 500,
     "negative_ratio": 0.25,
