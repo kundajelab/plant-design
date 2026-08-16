@@ -3,8 +3,10 @@
 
 Each job runs train_cherimoya.py for one pseudobulk/fold. Expects
 negatives.py to have already produced a negatives BED for every pseudobulk
-being trained. Prints one shell command per job with a missing model
-checkpoint; pipe into `parallel`, `simple_gpu_scheduler`, or run directly.
+being trained. Prints one shell command per job missing a {name}.final.torch
+checkpoint (cherimoya's own end-of-training marker; {name}.torch is the best
+checkpoint so far and can exist from a killed/partial run); pipe into
+`parallel`, `simple_gpu_scheduler`, or run directly.
 
 Jobs run via `uv run --frozen` inside the shared plant-design environment.
 """
@@ -54,7 +56,15 @@ def main():
     for pseudobulk in pseudobulks:
         for fold in folds:
             out_dir = model_root / pseudobulk
-            done_path = out_dir / f"{pseudobulk}_f{fold}.torch"
+            # cherimoya's fit() saves {name}.torch opportunistically inside
+            # the epoch loop whenever validation improves (as early as epoch
+            # 0), and only saves {name}.final.torch once, unconditionally,
+            # after the loop exits (by exhausting --max-epochs or an
+            # early-stopping break). final.torch is therefore the true
+            # "training finished" marker -- {name}.torch can exist on disk
+            # from a job that was killed partway through.
+            best_path = out_dir / f"{pseudobulk}_f{fold}.torch"
+            done_path = out_dir / f"{pseudobulk}_f{fold}.final.torch"
             if not args.rerun and done_path.exists():
                 skipped += 1
                 continue
@@ -86,7 +96,7 @@ def main():
             ]
             if args.early_stopping is not None:
                 command += ["--early-stopping", args.early_stopping]
-            command = cleanup_then_run([done_path], command)
+            command = cleanup_then_run([best_path, done_path], command)
             jobs.append((f"{pseudobulk}_f{fold}", command))
 
     print_jobs(jobs=jobs, label="cherimoya fit")
