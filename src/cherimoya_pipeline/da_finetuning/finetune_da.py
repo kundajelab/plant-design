@@ -522,6 +522,16 @@ def _adapter_manifest(args, base_model_path, adapter_config, trainable_params):
             "conv_scale": adapter_config["conv_scale"],
             "linear_scale": adapter_config["linear_scale"],
             "dropout": adapter_config["dropout"],
+            # architecture="cherimoya" (plus the block-adapter fields below)
+            # is required by daicon.load_adapter_bundle -> inject_adapters to
+            # re-resolve Cherimoya block targets (e.g. blocks.0) on load;
+            # without it, injection falls back to generic Conv1d/Linear
+            # resolution and raises on CheriBlock targets.
+            "architecture": adapter_config["architecture"],
+            "block_rank": adapter_config["block_rank"],
+            "block_scale": adapter_config["block_scale"],
+            "block_adapter": adapter_config["block_adapter"],
+            "target_adapters": adapter_config["target_adapters"],
         },
         "layer_specs": adapter_config["layer_specs"],
         "trainable_params": trainable_params,
