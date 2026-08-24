@@ -123,8 +123,10 @@ def existing_da_path(species, dataset_name, variant):
 
 
 def benchmark_da_peaks_path(da_path):
+    # benchmark_da.py's --save-output always writes this as a .csv
+    # regardless of da_path's own (.json) extension.
     return da_path.with_name(
-        da_path.stem.replace("da_benchmark", "da_benchmark_peaks") + da_path.suffix
+        da_path.stem.replace("da_benchmark", "da_benchmark_peaks") + ".csv"
     )
 
 
@@ -267,7 +269,7 @@ def main():
                 file=sys.stderr,
             )
             sys.exit(1)
-    variant_names = args.variant or (["base"] if args.dataset != "base" else list(VARIANTS))
+    variant_names = args.variant or list(VARIANTS)
     jobs = [build_variant_job(args, species, VARIANTS[name]) for name in variant_names]
     print_jobs(jobs)
 
