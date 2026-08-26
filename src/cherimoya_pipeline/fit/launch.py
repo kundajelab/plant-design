@@ -42,7 +42,12 @@ import subprocess
 import sys
 import textwrap
 
-from launcher_common import REPO_ROOT, SCRIPT_DIR, add_common_args, resolve_dataset_and_jobs
+from launcher_common import (
+    REPO_ROOT,
+    SCRIPT_DIR,
+    add_common_args,
+    resolve_dataset_and_jobs,
+)
 
 import species_config
 

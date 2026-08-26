@@ -267,20 +267,19 @@ name = "cherimoya"
 version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "bam2bw" },
-    { name = "bpnet-lite" },
-    { name = "h5py" },
-    { name = "joblib" },
-    { name = "modisco" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "scipy" },
-    { name = "seaborn" },
-    { name = "tangermeme" },
-    { name = "torch", version = "2.12.0", source = { registry = "https://pypi.org/simple" } },
-    { name = "tqdm" },
-    { name = "triton", version = "3.7.0", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-12-plant-design-cherimoya') or (sys_platform == 'emscripten' and extra == 'extra-12-plant-design-cherimoya' and extra == 'extra-12-plant-design-sherlock') or (sys_platform == 'win32' and extra == 'extra-12-plant-design-cherimoya' and extra == 'extra-12-plant-design-sherlock')" },
-    { name = "triton", version = "3.7.1", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'emscripten' and extra == 'extra-12-plant-design-cherimoya') or (sys_platform == 'win32' and extra == 'extra-12-plant-design-cherimoya') or (extra == 'extra-12-plant-design-cherimoya' and extra == 'extra-12-plant-design-sherlock')" },
+    { name = "bam2bw", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "bpnet-lite", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "h5py", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "joblib", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "modisco", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "numpy", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "pandas", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "scipy", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "seaborn", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "tangermeme", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "torch", version = "2.12.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "tqdm", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "triton", version = "3.7.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c3/17/80830a938ea2902bc33976df15034528d19bb0ba10b5a88594b651360074/cherimoya-0.2.0.tar.gz", hash = "sha256:981810af21b8d923643ce612de7a8c136ef132cbedf1e0c657b38b2880213d1b", size = 118498, upload-time = "2026-07-14T13:54:21.826Z" }
 wheels = [
@@ -1183,19 +1182,19 @@ name = "modisco"
 version = "2.5.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h5py" },
-    { name = "hdf5plugin" },
-    { name = "igraph" },
-    { name = "jinja2" },
-    { name = "leidenalg" },
-    { name = "logomaker" },
-    { name = "memelite" },
-    { name = "numba" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "scikit-learn" },
-    { name = "scipy" },
-    { name = "tqdm" },
+    { name = "h5py", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "hdf5plugin", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "igraph", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "jinja2", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "leidenalg", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "logomaker", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "memelite", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "numba", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "numpy", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "pandas", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "scikit-learn", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "scipy", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "tqdm", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e1/d7/c020b17d3f55437b887b623e6a3036f18fd1f6fd9e11d7b6056bda584c97/modisco-2.5.2.tar.gz", hash = "sha256:820433d842803b66bcc8f29ef760edd2e62182a598bcfded6009f679dbbb53d5", size = 48474, upload-time = "2025-10-12T13:50:18.961Z" }
 wheels = [
@@ -1811,7 +1810,7 @@ requires-dist = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "pillow" },
-    { name = "pybigtools", specifier = "==0.3.0" },
+    { name = "pybigtools", specifier = "==0.2.5" },
     { name = "pyfaidx" },
     { name = "pyyaml" },
     { name = "scikit-learn" },
@@ -1908,19 +1907,18 @@ wheels = [
 
 [[package]]
 name = "pybigtools"
-version = "0.3.0"
+version = "0.2.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/61/f7/63dc6550b7b06ffcbafdaca052c887b717235d70acd9c7abf56bb25951c5/pybigtools-0.3.0.tar.gz", hash = "sha256:5fd0854919294421cabf9c45a7b3b6d56d105bc3c43e069f461e4adb4a50f6af", size = 9591664, upload-time = "2026-06-04T01:01:58.912Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/33/773081943edf6de58ca5d1a2cf106708d729c9b60daa6aa66e0000e54bef/pybigtools-0.2.5.tar.gz", hash = "sha256:84c285000733d5073f9ac005f43384d9a64d5774dd1cb16d409c9bd3c05efc99", size = 9522960, upload-time = "2026-02-13T06:12:14.287Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c1/97/8fc0c9a2d99f92039880e8a3fccdef2886fab74c29d892cbe50091f4e6a2/pybigtools-0.3.0-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:28bfda6980a7f6df8e83acb5890c47857712720d082bdb22ae53525bd178ff0e", size = 1508190, upload-time = "2026-06-04T01:01:35.416Z" },
-    { url = "https://files.pythonhosted.org/packages/fa/ab/dd25977424221f310735a49993bebd8bd08539807c10bdea656a665e82d6/pybigtools-0.3.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:85c13c5baa45fef22b30a933ed81e96b2388ff94795a5a693d9ba38c0951a787", size = 1412638, upload-time = "2026-06-04T01:01:36.721Z" },
-    { url = "https://files.pythonhosted.org/packages/a8/e8/897e03a7492aae9bebed33a1b6d7b4b9b81971a8aed2f6e10fb047566fc7/pybigtools-0.3.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:5b6b4e0f2613469c932506b14b8037a6721894b672878133d893a3b1d23d1bf3", size = 1507794, upload-time = "2026-06-04T01:01:37.894Z" },
-    { url = "https://files.pythonhosted.org/packages/34/9c/028f5e8a0e09df78cf9b6063fc46cd8da2da7519f440700570e88020f7be/pybigtools-0.3.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:cb61cbb60bc06d0a4ecfa1eff75462d0076938346bb66ae07eab5acd56c63ee8", size = 1587628, upload-time = "2026-06-04T01:01:39.095Z" },
-    { url = "https://files.pythonhosted.org/packages/83/35/54221657bcb2e3619ea1cb356584b5b37513ed53897311bed9e23050880b/pybigtools-0.3.0-cp312-cp312-win32.whl", hash = "sha256:32bc5fe213373c4d3fa775763e731bce257dd91b0c39a6a0ccda07f2d180f55b", size = 1127859, upload-time = "2026-06-04T01:01:40.352Z" },
-    { url = "https://files.pythonhosted.org/packages/e4/60/2dc6a3ce42ea4a0aa211789aaef1d5ae0d903e9cdc9f267c2ff4da656b68/pybigtools-0.3.0-cp312-cp312-win_amd64.whl", hash = "sha256:b97ff928edb4ca1b0eed60a0cb5c5f07679a839654c84b54dfa3580813f9548b", size = 1391582, upload-time = "2026-06-04T01:01:41.721Z" },
+    { url = "https://files.pythonhosted.org/packages/34/52/68cf1bd917bdf881e9c7bd9394ee0fea9562e00e3bf6d498dbd8eaba5a12/pybigtools-0.2.5-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:45a30663b4fc39f5c205625ef03e3ca357806edeae88a3698d0174189cec8ffb", size = 1489135, upload-time = "2026-02-13T06:11:46.86Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/d3/59160d0079852c688e07f203725d6ac03ce7f6e2db8afdfe01ff2830eb02/pybigtools-0.2.5-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:33be55abee65b1c3bc39ff59d62a54ca77fa187c39945002fa16447effea81c4", size = 1400551, upload-time = "2026-02-13T06:11:48.36Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/fb/fd7e472640d4337d11ea2de624bc79968861ad599525655d68f1e03271b1/pybigtools-0.2.5-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:5be090aabd0f0ed0fed5417e11dea9e305fa8e10d8d27691a591a4890d488b85", size = 1494111, upload-time = "2026-02-13T06:11:50.305Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/0c/5e15d3eed732ade87921fb02191dce08b344d6c8894f2ce457699adf1e85/pybigtools-0.2.5-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:d9337d1da61a9e08daf4b0964c98d5d4f41f96cfb1437b087b55bda728fdff4f", size = 1566740, upload-time = "2026-02-13T06:11:51.517Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/32/81e436701ef8973620936309d5785e1b6c822411cc58f57cba461ae879e2/pybigtools-0.2.5-cp312-cp312-win_amd64.whl", hash = "sha256:e7788b1451a29fda754b09139e797de5052068eefd4835549afe714094e62fcc", size = 1373038, upload-time = "2026-02-13T06:11:53.085Z" },
 ]
 
 [[package]]
@@ -2526,15 +2524,6 @@ resolution-markers = [
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f7/13/ec05adfcd87311d532ba61e3af143e8be59fcd26675884c4682841406a20/triton-3.7.0-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:a4bf49b00a7a377a68a6da603a876e797614e6455a80e9021669c476a953ad9a", size = 188505104, upload-time = "2026-05-07T19:05:09.843Z" },
     { url = "https://files.pythonhosted.org/packages/62/7b/468a576e35beef1426e0828e28e9ba9e65f5474d496f16ee126c15646324/triton-3.7.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8f111161d49bf903c0eaedde3962353a3d841c08a836839b7cc1025b8426efcf", size = 201457567, upload-time = "2026-05-07T18:46:13.505Z" },
-]
-
-[[package]]
-name = "triton"
-version = "3.7.1"
-source = { registry = "https://pypi.org/simple" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/94/fa/f856e24deb462d5f18bd4b5a746957862ab9b6ee5834bda60605ec348366/triton-3.7.1-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:9497f2e696ee368862a181a90b2dcc03ca978cc4f602abd67c7d81022a6988e1", size = 184692359, upload-time = "2026-06-17T20:03:48.288Z" },
-    { url = "https://files.pythonhosted.org/packages/c4/6f/fb96d15db6f36d6eae4cafb998c2e0353bf59d7c4ea1662d7497f269134a/triton-3.7.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7e40869937a68206ec70d7f25bb7ec6433cb083f9135e1f36dbd318dc449a728", size = 197719725, upload-time = "2026-06-17T19:53:20.419Z" },
 ]
 
 [[package]]
