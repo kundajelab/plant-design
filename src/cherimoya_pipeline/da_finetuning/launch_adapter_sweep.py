@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
-"""Collect and print unfinished adapter sweep jobs, one per pseudobulk and fold.
-For development/optimization of adapter hyperparameters.
+"""Submit one SLURM adapter sweep job per pseudobulk, fold, and hyperparameter
+combo. For development/optimization of adapter hyperparameters.
 
-Prints one shell command per job whose expected adapter bundle is missing;
-pipe into `parallel`/`simple_gpu_scheduler` or run directly.
+By default, jobs run via `apptainer exec --nv` against the Cherimoya
+Apptainer image (see ../apptainer/).
+
+--local skips SLURM entirely and runs each job directly in the foreground
+with inherited stdout/stderr, instead of submitting SLURM jobs. Combined
+with --dry-run, --local prints one runnable command per job instead of
+running them -- pipe that into something like `simple_gpu_scheduler` to fan
+a sweep out across a multi-GPU box.
 """
 
 import argparse
 import itertools
 import json
+import os
 import shlex
+import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -19,7 +28,6 @@ import species_config
 
 DATASETS = ("base", "fine", "coarse")
 N_FOLDS = 5
-PYTHON = ("uv", "run", "--frozen", "python")
 
 
 DEFAULT_SWEEP = {
@@ -56,41 +64,19 @@ def _load_sweep(path):
     return merged
 
 
+def default_apptainer_image():
+    return os.environ.get(
+        "CHERIMOYA_APPTAINER_IMAGE",
+        f"/scratch/users/{os.environ.get('USER', '')}/apptainer/cherimoya.sif",
+    )
+
+
 def model_root(species, dataset):
     root = species_config.models_dir(species)
     return root if dataset == "base" else root / dataset
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
-    )
-    species_config.add_species_arg(parser)
-    parser.add_argument("--config", type=Path, default=None)
-    parser.add_argument("--sweep-prefix", default="adapter")
-    parser.add_argument("--pseudobulk", action="append", default=None)
-    parser.add_argument(
-        "--dataset",
-        choices=DATASETS,
-        default="base",
-        help="Dataset namespace to finetune (default: base).",
-    )
-    parser.add_argument("--fold", type=int, action="append", default=None)
-    parser.add_argument("--materialize-model", action="store_true")
-    parser.add_argument(
-        "--check-finished",
-        action="store_true",
-        help="report expected adapter bundles and exit without printing commands",
-    )
-    parser.add_argument(
-        "--rerun-finished",
-        action="store_true",
-        help="include commands whose expected adapter bundle already exists",
-    )
-    args = parser.parse_args()
-
-    species = species_config.resolve_species(args.species)
-    sweep = _load_sweep(args.config)
+def build_jobs(args, species, sweep):
     pseudobulks = args.pseudobulk
     if pseudobulks is None:
         pseudobulks = species_config.read_pseudobulks(species, args.dataset)
@@ -118,10 +104,8 @@ def main():
         "da_fraction",
     ]
     combos = list(itertools.product(*[_as_list(sweep[key]) for key in keys]))
-    commands_by_job = {
-        (pseudobulk, fold): [] for pseudobulk in pseudobulks for fold in folds
-    }
 
+    jobs = []
     for values in combos:
         combo = dict(zip(keys, values))
         target_tag = str(combo["targets"]).replace("+", "_")
@@ -135,7 +119,7 @@ def main():
         for pseudobulk in pseudobulks:
             for fold in folds:
                 cmd = [
-                    *PYTHON,
+                    "python",
                     str(script),
                     "--species",
                     species,
@@ -188,45 +172,194 @@ def main():
                     / sweep_id
                     / f"{pseudobulk}_f{fold}.log.tsv"
                 )
-                commands_by_job[(pseudobulk, fold)].append(
+                job_name = f"da_sweep_{sweep_id}_{pseudobulk}_f{fold}".replace(".", "p")
+                jobs.append(
                     {
-                        "command": " ".join(shlex.quote(part) for part in cmd),
+                        "job_name": job_name,
+                        "command": cmd,
                         "finish_path": log_path,
                         "sweep_id": sweep_id,
+                        "pseudobulk": pseudobulk,
+                        "fold": fold,
                     }
                 )
+    return jobs
 
-    total_finished = 0
-    total_expected = 0
-    for (pseudobulk, fold), entries in commands_by_job.items():
-        finished = sum(entry["finish_path"].exists() for entry in entries)
-        total_finished += finished
-        total_expected += len(entries)
-        if args.check_finished:
-            status = "DONE" if finished == len(entries) else "PENDING"
-            print(
-                f"{status}\t{pseudobulk}\tfold={fold}\t"
-                f"{finished}/{len(entries)} training logs"
-            )
-            if finished != len(entries):
-                for entry in entries:
-                    if not entry["finish_path"].exists():
-                        print(f"MISSING\t{entry['finish_path']}")
+
+def print_finished_report(jobs):
+    total_finished = sum(job["finish_path"].exists() for job in jobs)
+    for job in jobs:
+        status = "DONE" if job["finish_path"].exists() else "PENDING"
+        print(f"{status}\t{job['sweep_id']}\t{job['pseudobulk']}\tfold={job['fold']}")
+        if status == "PENDING":
+            print(f"MISSING\t{job['finish_path']}")
+    print(f"\nFinished {total_finished}/{len(jobs)} expected training logs.")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
+    species_config.add_species_arg(parser)
+    parser.add_argument("--config", type=Path, default=None)
+    parser.add_argument("--sweep-prefix", default="adapter")
+    parser.add_argument("--pseudobulk", action="append", default=None)
+    parser.add_argument(
+        "--dataset",
+        choices=DATASETS,
+        default="base",
+        help="Dataset namespace to finetune (default: base).",
+    )
+    parser.add_argument("--fold", type=int, action="append", default=None)
+    parser.add_argument("--materialize-model", action="store_true")
+    parser.add_argument(
+        "--check-finished",
+        action="store_true",
+        help="report expected adapter bundles and exit without submitting jobs",
+    )
+    parser.add_argument(
+        "--rerun-finished",
+        action="store_true",
+        help="include jobs whose expected adapter bundle already exists",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print sbatch scripts (or local commands, with --local) without running them",
+    )
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help=(
+            "run each job directly in the foreground, instead of "
+            "submitting SLURM jobs; ignores SLURM resource flags"
+        ),
+    )
+    parser.add_argument(
+        "--apptainer-image",
+        type=str,
+        default=default_apptainer_image(),
+        help=f"path to the Cherimoya Apptainer .sif image (default: {default_apptainer_image()})",
+    )
+    parser.add_argument("--apptainer-bind", action="append", default=None)
+    parser.add_argument(
+        "--gpus",
+        type=str,
+        default="|".join(
+            [
+                "GPU_SKU:A100_PCIE",
+                "GPU_SKU:A100_SXM4",
+                "GPU_SKU:A40",
+                "GPU_SKU:H100_SXM5",
+                "GPU_SKU:H200_SXM5",
+                "GPU_SKU:L40S",
+                "GPU_SKU:RTX_3090",
+            ]
+        ),
+    )
+    parser.add_argument("--partition", type=str, default="gpu,akundaje,owners")
+    parser.add_argument("--cpus-per-task", type=int, default=4)
+    parser.add_argument("--mem", type=str, default="64G")
+    parser.add_argument("--time", type=str, default="2-00:00:00")
+    args = parser.parse_args()
+
+    species = species_config.resolve_species(args.species)
+    sweep = _load_sweep(args.config)
+    jobs = build_jobs(args, species, sweep)
 
     if args.check_finished:
-        print(f"\nFinished {total_finished}/{total_expected} expected training logs.")
+        print_finished_report(jobs)
         return
 
-    printed = 0
+    log_dir = species_config.logs_dir(species) / "cherimoya_da_finetuning_sweep"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    apptainer_binds = args.apptainer_bind or [str(REPO_ROOT)]
+    apptainer_bind_args = " ".join(f"--bind {shlex.quote(p)}" for p in apptainer_binds)
+
+    submitted = 0
     skipped = 0
-    for entries in commands_by_job.values():
-        for entry in entries:
-            if args.rerun_finished or not entry["finish_path"].exists():
-                print(entry["command"])
-                printed += 1
-            else:
-                skipped += 1
-    print(f"\nPrinted {printed} command(s); skipped {skipped} finished command(s).", file=sys.stderr)
+    local_failures = []
+
+    for job in jobs:
+        if not args.rerun_finished and job["finish_path"].exists():
+            skipped += 1
+            continue
+
+        job_name = job["job_name"]
+        cmd = job["command"]
+
+        if args.local:
+            full_cmd = [
+                "apptainer",
+                "exec",
+                "--nv",
+                *[part for path in apptainer_binds for part in ("--bind", path)],
+                args.apptainer_image,
+                *cmd,
+            ]
+            if args.dry_run:
+                print(shlex.join(full_cmd))
+                submitted += 1
+                continue
+            print(f"=== {job_name} ===")
+            result = subprocess.run(full_cmd, cwd=REPO_ROOT)
+            if result.returncode != 0:
+                local_failures.append((job_name, result.returncode))
+                print(f"ERROR: {job_name} exited with {result.returncode}", file=sys.stderr)
+            submitted += 1
+            continue
+
+        command_bash = " ".join(shlex.quote(part) for part in cmd)
+        run_cmd = f'apptainer exec --nv {apptainer_bind_args} "$APPTAINER_IMAGE" {command_bash}'
+
+        sbatch_script = textwrap.dedent(f"""\
+            #!/bin/bash -l
+            #SBATCH --job-name={job_name}
+            #SBATCH --ntasks=1
+            #SBATCH --ntasks-per-node=1
+            #SBATCH --nodes=1
+            #SBATCH --gpus=1
+            #SBATCH -C {args.gpus}
+            #SBATCH --cpus-per-task={args.cpus_per_task}
+            #SBATCH --mem={args.mem}
+            #SBATCH --partition={args.partition}
+            #SBATCH --time={args.time}
+            #SBATCH --output={log_dir}/{job_name}.out
+            #SBATCH --error={log_dir}/{job_name}.err
+
+            APPTAINER_IMAGE="{args.apptainer_image}"
+
+            nvidia-smi -L
+            time {run_cmd}
+        """)
+
+        if args.dry_run:
+            print(f"--- {job_name} ---")
+            print(sbatch_script)
+            submitted += 1
+            continue
+
+        result = subprocess.run(
+            ["sbatch"], input=sbatch_script, capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            print(f"{job_name}: {result.stdout.strip()}")
+            submitted += 1
+        else:
+            print(f"ERROR submitting {job_name}: {result.stderr.strip()}", file=sys.stderr)
+
+    if args.local:
+        action = "Would run" if args.dry_run else "Ran"
+    else:
+        action = "Would submit" if args.dry_run else "Submitted"
+    print(f"\n{action} {submitted} job(s); skipped {skipped} already-finished job(s).")
+    if args.local and not args.dry_run:
+        if local_failures:
+            print(f"{len(local_failures)} job(s) failed:")
+            for job_name, returncode in local_failures:
+                print(f"  {job_name} (exit {returncode})")
+        else:
+            print("All jobs completed successfully.")
 
 
 if __name__ == "__main__":

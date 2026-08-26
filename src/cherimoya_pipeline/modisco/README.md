@@ -27,14 +27,20 @@ data/JASPAR2026_CORE_plants_non-redundant_pfms_meme.txt
 
 ## Run Motif Discovery
 
-No SLURM integration: `launch.py` collects and prints one `modisco motifs`
-command per (pseudobulk, head) pair whose output is missing; pipe into
-`parallel` or run directly.
+`launch.py` submits one SLURM job per (pseudobulk, head) pair whose output
+is missing. `modisco` (tf-modisco-lite) is pip-installed directly inside the
+Cherimoya Apptainer image (see `../apptainer/`), so jobs run `modisco
+motifs` via `apptainer exec` against that image by default (CPU-only, no
+`--nv`/GPU needed) -- there's no separate Lmod/conda environment for
+modisco. `--dry-run` prints the generated sbatch scripts instead of
+submitting; `--local` runs in the foreground instead of submitting to
+SLURM.
 
 All base all-peak MoDISco jobs:
 
 ```bash
 uv run python src/cherimoya_pipeline/modisco/launch.py
+uv run python src/cherimoya_pipeline/modisco/launch.py --dry-run
 ```
 
 DA-specific jobs on per-cell-type specific-union peaks:
@@ -76,7 +82,8 @@ uv run python src/cherimoya_pipeline/modisco/launch.py --head profile
 
 ## Generate Reports
 
-After `.modisco.h5` outputs exist, collect and print report commands:
+After `.modisco.h5` outputs exist, submit report jobs the same way (also
+via the Apptainer image, CPU-only):
 
 ```bash
 uv run python src/cherimoya_pipeline/modisco/launch_report.py \

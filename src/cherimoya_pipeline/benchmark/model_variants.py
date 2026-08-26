@@ -1,9 +1,17 @@
-"""Shared model-variant CLI helpers for benchmark scripts."""
+"""Shared model-variant CLI helpers for benchmark scripts.
+
+add_model_variant_args()/resolve_model_variant() are pure argparse/string
+logic used by the SLURM launchers (attribute/launch.py, modisco/launch*.py)
+as well as the actual compute scripts -- cherimoya/daicon are only imported
+inside load_cherimoya_with_adapter() (not at module scope) so a launcher can
+resolve which model variant to use, and print/submit its job, without
+either package (or their torch>=2.9 requirement) installed. Sherlock's base
+`plant-design` env doesn't carry cherimoya -- see the `cherimoya` extra in
+pyproject.toml -- so this matters for anything invoking these launchers
+there.
+"""
 
 import sys
-
-from cherimoya import Cherimoya
-from daicon import load_adapter_bundle
 
 
 def load_cherimoya_with_adapter(model_path, adapter_path=None, device="cpu"):
@@ -15,6 +23,9 @@ def load_cherimoya_with_adapter(model_path, adapter_path=None, device="cpu"):
     latter. Adapters are applied at the model root: Cherimoya has no
     bias/accessibility submodel split to target.
     """
+    from cherimoya import Cherimoya
+    from daicon import load_adapter_bundle
+
     model = Cherimoya.load(model_path, device=device, compile=False)
     if adapter_path is None:
         return model, None

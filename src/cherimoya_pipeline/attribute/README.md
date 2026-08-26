@@ -136,14 +136,17 @@ Other supported DA peak sets are `tau`, `pairwise`, and `pairwise_higher`.
 
 ## Launch DeepLIFT/SHAP Jobs
 
-No SLURM integration: `launch.py` collects and prints one `deepliftshap.py`
-command per (pseudobulk, head) pair whose output is missing; pipe into
-`parallel` or run directly.
+`launch.py` submits one SLURM job per (pseudobulk, head) pair whose output
+is missing, running via `apptainer exec --nv` against the Cherimoya
+Apptainer image (see `../apptainer/`) by default. `--dry-run` prints the
+generated sbatch scripts instead of submitting; `--local` runs in the
+foreground instead of submitting to SLURM.
 
 All base all-peak attributions:
 
 ```bash
 uv run python src/cherimoya_pipeline/attribute/launch.py
+uv run python src/cherimoya_pipeline/attribute/launch.py --dry-run
 ```
 
 Fine or coarse all-peak attributions:

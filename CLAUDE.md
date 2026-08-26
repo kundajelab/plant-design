@@ -24,6 +24,8 @@ uv sync --frozen
 
 `cherimoya` is a **Linux-only** core dependency — it requires `torch>=2.9`/`triton>=3.5.1`, and `triton` has no macOS wheels at all. Training (`fit/`) only runs on Linux GPU machines; preprocessing, benchmarking, attribution, and DA finetuning work in the same env on any platform once a model exists.
 
+On Sherlock, every `cherimoya_pipeline` launcher (`fit/`, `benchmark/`, `attribute/`, `modisco/`, `da_finetuning/`) submits SLURM jobs that run via `apptainer exec` against the Cherimoya Apptainer image (`src/cherimoya_pipeline/apptainer/`) instead of `uv sync`ing the `plant-design` env directly on the login/compute node -- Sherlock's system toolchain can't reliably build/resolve `torch>=2.9`/`triton>=3.5.1`. See `src/cherimoya_pipeline/apptainer/README.md` for building the image and `check_gpu.py` for verifying it against Sherlock's GPU fleet.
+
 ## Pipeline Execution Order
 
 ```bash
@@ -34,10 +36,10 @@ bash src/data_preprocessing/make_bigwigs.sh | parallel
 python configs/write_folds.py [--species S.bicolor]
 
 # 3. Generate GC-matched negative regions (Cherimoya's own `negatives` CLI; one per pseudobulk, not per fold)
-uv run python src/cherimoya_pipeline/fit/negatives.py | parallel
+python src/cherimoya_pipeline/fit/negatives.py
 
 # 4. Train Cherimoya models (all pseudobulks, all folds; single stage, no bias model)
-uv run python src/cherimoya_pipeline/fit/launch.py
+python src/cherimoya_pipeline/fit/launch.py
 
 # 5. Benchmark models
 uv run python src/cherimoya_pipeline/benchmark/benchmark.py -p <pseudobulk> [-o]
@@ -54,7 +56,7 @@ for fold in 0 1 2 3 4; do
 done
 ```
 
-There is no SLURM integration: `fit/`/`benchmark/`/`attribute/`/`modisco/`/`da_finetuning/` launchers just collect unfinished jobs (missing output files) and print one shell command per job to stdout, to be run directly or piped into `parallel`/`simple_gpu_scheduler`. All accept `--species` (default `S.bicolor`), `--dataset {base,fine,coarse}`, and `--rerun` (print jobs even if already done).
+`fit/`/`benchmark/`/`attribute/`/`modisco/`/`da_finetuning/` launchers submit SLURM jobs for unfinished work (missing output files), running via `apptainer exec` against the Cherimoya Apptainer image (`--nv` for GPU jobs; see `src/cherimoya_pipeline/apptainer/`) rather than `uv run` directly. `--dry-run` prints the generated sbatch script instead of submitting; `--local` skips SLURM and runs in the foreground instead (combine with `--dry-run` to print one command per job, e.g. for `simple_gpu_scheduler`/`parallel` on a non-Sherlock GPU box). All accept `--species` (default `S.bicolor`), `--dataset {base,fine,coarse}`, and `--rerun` (submit/run jobs even if already done).
 
 ## Code Architecture
 
@@ -92,18 +94,23 @@ DeepLIFT/SHAP attribution pipeline (model-agnostic `bpnetlite`/`tangermeme` mach
 - **`save_ohe.py`**: Extracts and saves one-hot-encoded sequences for all peaks genome-wide to `attributions/<species>/{pseudobulk}_ohe.npz`. Run once per pseudobulk before attribution.
 - **`da_peaks.py`**: Shared path-resolution helpers (species/dataset/pseudobulk → BED/model-dir/OHE paths) used by `save_ohe.py`, `deepliftshap.py`, and `modisco/`.
 - **`deepliftshap.py`**: Computes hypothetical DeepLIFT/SHAP attributions across all peaks for a given pseudobulk and head (`profile`/`count`), loading the Cherimoya checkpoint via `model_variants.load_cherimoya_with_adapter`. Averages attributions across all 5 folds and saves to `attributions/<species>/cherimoya{_variant}/{pseudobulk}_{head}.npz`.
-- **`launch.py`**: Collects and prints `deepliftshap.py` commands looping over pseudobulk × head, skipping ones whose output already exists or whose inputs are missing.
+- **`launch.py`**: Submits one SLURM job per (pseudobulk, head) via `deepliftshap.py`, skipping ones whose output already exists or whose inputs are missing.
 
 ### `src/cherimoya_pipeline/modisco/`
 
-- **`launch.py`**: Collects and prints standalone `modisco motifs` (tfmodisco-lite) commands on precomputed OHE/attribution npz files.
-- **`launch_report.py`**: Collects and prints `modisco report` commands to generate HTML reports from the `.modisco.h5` outputs.
+- **`launch.py`**: Submits one SLURM job per (pseudobulk, head) running `modisco motifs` (tfmodisco-lite) on precomputed OHE/attribution npz files, via the Cherimoya Apptainer image (CPU-only; `modisco` is pip-installed inside that image, not the `plant-design` uv env).
+- **`launch_report.py`**: Submits one SLURM job per (pseudobulk, head) running `modisco report` to generate HTML reports from the `.modisco.h5` outputs, same Apptainer-image path as `launch.py`.
 
 ### `src/cherimoya_pipeline/da_finetuning/`
 
 - **`finetune_da.py`**: Finetunes the whole Cherimoya model (`--mode full`, default) or daicon adapters (`--mode adapter`) for one pseudobulk × fold on a mixed training set: 50% DA peaks (union of `da_peaks_tau.bed` + `da_peaks_pairwise.bed`) and 50% base mix (cell-type peaks at 7/8, nonpeaks at 1/8). Each DA peak is seen exactly once per epoch. Adapter targets use Cherimoya's own layer names (`iconv`/`blocks`/`fconv`/`linear`/`heads`, `daicon.Cherimoya_TARGETS`/`Cherimoya_PRESETS`); default target is `all_postblock` (Cherimoya has no single "all" preset). Requires `-p`/`--pseudobulk` and `-f`/`--fold`. Saves finetuned models to `models/<species>/<pseudobulk>/finetuned/`.
 - **`finetune_adapters.py`**: Thin compatibility wrapper preserving the historical adapter-only CLI, delegating to `finetune_da.py --mode adapter`.
-- **`launch.py`** / **`launch_adapter_sweep.py`**: Collect and print `finetune_da.py`/`finetune_adapters.py` commands for unfinished runs; pipe into `parallel`/`simple_gpu_scheduler` for multi-GPU fan-out.
+- **`launch.py`** / **`launch_adapter_sweep.py`**: Submit `finetune_da.py`/`finetune_adapters.py` SLURM jobs for unfinished runs (one job per (run group, pseudobulk, fold) / per (pseudobulk, fold, hyperparameter combo) respectively); `--local --dry-run` prints plain commands for multi-GPU fan-out via `simple_gpu_scheduler` instead.
+
+### `src/cherimoya_pipeline/apptainer/`
+
+- **`cherimoya.def`**: Apptainer definition bootstrapping from `pytorch/pytorch:2.13.0-cuda12.6-cudnn9-runtime` and pip-installing Cherimoya plus every non-torch dependency (including `modisco`/tf-modisco-lite) `--no-deps` on top of the base image's own torch build. Built into a `.sif` and run via `apptainer exec --nv`, this is the default execution path for every launcher above -- sidesteps Sherlock's old system toolchain, which can't reliably build/resolve `torch>=2.9`/`triton>=3.5.1` directly.
+- **`check_gpu.py`**: Submits one short per-GPU-SKU SLURM job that loads the image and moves a tensor onto the GPU, since Sherlock has no way to query driver/CUDA compatibility ahead of time.
 
 ### `src/data_preprocessing/`
 
@@ -117,4 +124,4 @@ DeepLIFT/SHAP attribution pipeline (model-agnostic `bpnetlite`/`tangermeme` mach
 - Reference genome: resolved per-species via `species_config.genome_fasta()`; default species (`S.bicolor`) uses *S. bicolor* v5 (`data/S.bicolor/Sbicolor_730_v5.0.fa`)
 - Input window: 2114 bp; output window: 1000 bp
 - Default random seed: 1234
-- GPU scheduling: `simple_gpu_scheduler` used in `da_finetuning/` shell/launch scripts for parallel multi-GPU training
+- GPU scheduling: SLURM (via each launcher's `apptainer exec --nv` sbatch submission) is the default; `--local --dry-run` on any launcher prints plain commands for `simple_gpu_scheduler`-based multi-GPU fan-out instead

@@ -58,24 +58,30 @@ performance_metrics/<species>/differential_accessibility_fine/da_benchmark.json
 
 ## Launcher
 
-Collect and print the standard benchmark set's unfinished commands (no SLURM
-integration; pipe into `parallel` or run directly):
+`launch.py` submits one SLURM job per variant, bundling that variant's
+cross-pseudobulk/DA/pairwise steps into a single sbatch script that runs via
+`apptainer exec --nv` against the Cherimoya Apptainer image (see
+`../apptainer/`). `--dry-run` prints the generated sbatch script instead of
+submitting; `--local` runs in the foreground instead of submitting to
+SLURM (combine with `--dry-run` to print one command per step for
+`simple_gpu_scheduler`/`parallel`):
 
 ```bash
-uv run python src/cherimoya_pipeline/benchmark/launch.py
+python src/cherimoya_pipeline/benchmark/launch.py
+python src/cherimoya_pipeline/benchmark/launch.py --dry-run
 ```
 
 For coarse or fine datasets, the launcher defaults to the base model variant:
 
 ```bash
-uv run python src/cherimoya_pipeline/benchmark/launch.py --dataset coarse
-uv run python src/cherimoya_pipeline/benchmark/launch.py --dataset fine
+python src/cherimoya_pipeline/benchmark/launch.py --dataset coarse
+python src/cherimoya_pipeline/benchmark/launch.py --dataset fine
 ```
 
 Print jobs even if their output already exists:
 
 ```bash
-uv run python src/cherimoya_pipeline/benchmark/launch.py \
+python src/cherimoya_pipeline/benchmark/launch.py \
     --dataset coarse \
     --rerun
 ```
@@ -83,8 +89,8 @@ uv run python src/cherimoya_pipeline/benchmark/launch.py \
 Use `--variant` to select a trained variant on the base dataset:
 
 ```bash
-uv run python src/cherimoya_pipeline/benchmark/launch.py --variant finetuned
-uv run python src/cherimoya_pipeline/benchmark/launch.py --variant adapter_0.8
+python src/cherimoya_pipeline/benchmark/launch.py --variant finetuned
+python src/cherimoya_pipeline/benchmark/launch.py --variant adapter_0.8
 ```
 
 ## Plotting

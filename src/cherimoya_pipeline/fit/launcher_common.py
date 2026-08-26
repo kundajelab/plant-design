@@ -1,14 +1,16 @@
-"""Shared helpers for Cherimoya job launchers.
+"""Shared species/dataset/pseudobulk/fold argument handling for the fit/
+launchers (train_cherimoya.py, negatives.py).
 
-No SLURM: launchers just collect unfinished jobs (missing output files) and
-print one shell command per job, to be run directly or piped into
-`parallel`/`simple_gpu_scheduler`/etc.
+SLURM submission, Apptainer resolution, and sbatch script generation are
+handled inline in each launch script instead of through a shared helper
+here (matching the sibling procap-atlas project's Cherimoya launchers) --
+this module only covers the species/dataset/pseudobulk/fold arg-parsing
+that's unrelated to how a job actually gets run.
 """
 
 from __future__ import annotations
 
 import argparse
-import shlex
 import sys
 from pathlib import Path
 
@@ -50,7 +52,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--rerun",
         action="store_true",
-        help="Print jobs even when completion marker files already exist.",
+        help="Submit/run jobs even when completion marker files already exist.",
     )
 
 
@@ -73,16 +75,3 @@ def resolve_dataset_and_jobs(args: argparse.Namespace):
     for pseudobulk in pseudobulks:
         validate_pseudobulk(species, args.dataset, pseudobulk)
     return species, pseudobulks, folds
-
-
-def cleanup_then_run(cleanup_paths: list[str | Path], command: list[str | Path]):
-    cleanup = " ".join(shlex.quote(str(path)) for path in cleanup_paths)
-    quoted_command = " ".join(shlex.quote(str(part)) for part in command)
-    return ["bash", "-lc", f"rm -rf -- {cleanup} && {quoted_command}"]
-
-
-def print_jobs(*, jobs: list[tuple[str, list[str | Path]]], label: str) -> None:
-    """Print one shell command per unfinished job."""
-    for _job_name, command in jobs:
-        print(" ".join(shlex.quote(str(part)) for part in command))
-    print(f"Printed {len(jobs)} {label} command(s).", file=sys.stderr)

@@ -74,8 +74,8 @@ BED file per pseudobulk (not per fold — chromosome-split filtering happens at
 train/predict time, not at negative-sampling time):
 
 ```bash
-uv run python src/cherimoya_pipeline/fit/negatives.py | parallel
-uv run python src/cherimoya_pipeline/fit/negatives.py --dataset fine
+python src/cherimoya_pipeline/fit/negatives.py
+python src/cherimoya_pipeline/fit/negatives.py --dataset fine
 ```
 
 ### 4. Train Cherimoya models
@@ -84,14 +84,19 @@ Trains one model per pseudobulk per fold directly against raw bigwig signal —
 no bias model, no separate accessibility stage:
 
 ```bash
-uv run python src/cherimoya_pipeline/fit/launch.py --dataset fine
+python src/cherimoya_pipeline/fit/launch.py --dataset fine
 ```
 
-There's no SLURM integration: `launch.py` collects pseudobulk/fold jobs with
-a missing model checkpoint and prints one local command per job to stdout,
-so it can be piped to `parallel`, `simple_gpu_scheduler`, or another local
-scheduler. `train_cherimoya.py` is the actual training entrypoint if you
-want to run a single pseudobulk/fold directly for debugging.
+`launch.py` submits one SLURM job per pseudobulk (looping over that
+pseudobulk's folds) for any pseudobulk missing a model checkpoint, running
+via `apptainer exec --nv` against the Cherimoya Apptainer image (see
+`src/cherimoya_pipeline/apptainer/`) by default. `--dry-run` prints the
+generated sbatch scripts instead of submitting; `--local` runs in the
+foreground instead — combine with `--dry-run` to print one command per fold
+for `simple_gpu_scheduler`/`parallel` on a GPU box you already have a shell
+on (e.g. an Oak GPU node). `train_cherimoya.py` is the actual training
+entrypoint if you want to run a single pseudobulk/fold directly for
+debugging.
 
 Models are saved to `models/<species>/<pseudobulk>/<pseudobulk>_f<fold>.torch`
 (Cherimoya's own config+state_dict checkpoint format, loaded via
@@ -203,10 +208,11 @@ written during training before the loop finishes.
 The legacy `finetune_adapters.py` CLI remains available as a compatibility
 wrapper around `finetune_da.py --mode adapter`.
 
-Use the standard launcher to collect and print full-model DA fine-tuning plus
-daicon adapter run commands, with both 0.5 and 0.8 DA fractions by default
-(no SLURM integration -- pipe into `parallel`/`simple_gpu_scheduler` or run
-directly):
+Use the standard launcher to submit full-model DA fine-tuning plus daicon
+adapter jobs, with both 0.5 and 0.8 DA fractions by default -- one SLURM job
+per (run group, pseudobulk, fold), running via `apptainer exec --nv`
+against the Cherimoya Apptainer image (`--dry-run`/`--local` supported, same
+as the other launchers):
 
 ```bash
 uv run python src/cherimoya_pipeline/da_finetuning/launch.py \

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect and print unfinished standard DA fine-tuning jobs.
+"""Submit SLURM jobs to run standard DA fine-tuning.
 
 This launcher is for the small set of named runs used downstream:
 
@@ -8,13 +8,25 @@ This launcher is for the small set of named runs used downstream:
 
 Use ``launch_adapter_sweep.py`` for the full adapter hyperparameter sweep.
 
-Prints one shell command per job whose expected training log is missing;
-pipe into `parallel`/`simple_gpu_scheduler` or run directly.
+One job is submitted per (run group, pseudobulk, fold), bundling that
+combination's DA-fraction variants (0.5, 0.8 by default) into a single
+sbatch script.
+
+By default, jobs run via `apptainer exec --nv` against the Cherimoya
+Apptainer image (see ../apptainer/).
+
+--local skips SLURM entirely and runs each job's steps directly in the
+foreground with inherited stdout/stderr, instead of submitting SLURM jobs.
+Combined with --dry-run, --local prints one runnable command per step
+instead of running them.
 """
 
 import argparse
+import os
 import shlex
+import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -24,7 +36,6 @@ import species_config
 DATASETS = ("base", "fine", "coarse")
 N_FOLDS = 5
 DA_FRACTIONS = (0.5, 0.8)
-PYTHON = ("uv", "run", "--frozen", "python")
 
 RUN_GROUPS = ("full", "adapter")
 DEFAULT_ADAPTER_LR = 1e-3
@@ -42,8 +53,11 @@ def default_adapter_run_id(da_fraction):
     return f"daicon_default_da{da_tag(da_fraction)}"
 
 
-def quote_command(parts):
-    return " ".join(shlex.quote(str(part)) for part in parts)
+def default_apptainer_image():
+    return os.environ.get(
+        "CHERIMOYA_APPTAINER_IMAGE",
+        f"/scratch/users/{os.environ.get('USER', '')}/apptainer/cherimoya.sif",
+    )
 
 
 def model_root(species, dataset):
@@ -60,26 +74,26 @@ def load_pseudobulks(species, dataset, selected):
 def common_training_args(args):
     common = [
         "--epochs",
-        args.epochs,
+        str(args.epochs),
         "--patience",
-        args.patience,
+        str(args.patience),
         "--batch-size",
-        args.batch_size,
+        str(args.batch_size),
         "--max-jitter",
-        args.max_jitter,
+        str(args.max_jitter),
         "--negative-ratio",
-        args.negative_ratio,
+        str(args.negative_ratio),
     ]
     if args.blacklist is not None:
-        common += ["--blacklist", args.blacklist]
+        common += ["--blacklist", str(args.blacklist)]
     return common
 
 
 def build_full_job(args, species, pseudobulk, fold, da_fraction):
     script = REPO_ROOT / "src" / "cherimoya_pipeline" / "da_finetuning" / "finetune_da.py"
     command = [
-        *PYTHON,
-        script,
+        "python",
+        str(script),
         "--species",
         species,
         "--dataset",
@@ -87,11 +101,11 @@ def build_full_job(args, species, pseudobulk, fold, da_fraction):
         "-p",
         pseudobulk,
         "-f",
-        fold,
+        str(fold),
         "--mode",
         "full",
         "--da-fraction",
-        da_fraction,
+        str(da_fraction),
         *common_training_args(args),
         "-v",
     ]
@@ -104,7 +118,7 @@ def build_full_job(args, species, pseudobulk, fold, da_fraction):
     return {
         "run_group": "full",
         "run_id": full_tag(da_fraction),
-        "command": quote_command(command),
+        "command": command,
         "finish_path": finish_path,
     }
 
@@ -113,8 +127,8 @@ def build_adapter_job(args, species, pseudobulk, fold, da_fraction):
     script = REPO_ROOT / "src" / "cherimoya_pipeline" / "da_finetuning" / "finetune_da.py"
     run_id = default_adapter_run_id(da_fraction)
     command = [
-        *PYTHON,
-        script,
+        "python",
+        str(script),
         "--species",
         species,
         "--dataset",
@@ -122,14 +136,14 @@ def build_adapter_job(args, species, pseudobulk, fold, da_fraction):
         "-p",
         pseudobulk,
         "-f",
-        fold,
+        str(fold),
         "--mode",
         "adapter",
         "--da-fraction",
-        da_fraction,
+        str(da_fraction),
         *common_training_args(args),
         "--lr",
-        args.adapter_lr,
+        str(args.adapter_lr),
         "-v",
     ]
     finish_path = (
@@ -142,7 +156,7 @@ def build_adapter_job(args, species, pseudobulk, fold, da_fraction):
     return {
         "run_group": "adapter",
         "run_id": run_id,
-        "command": quote_command(command),
+        "command": command,
         "finish_path": finish_path,
     }
 
@@ -185,19 +199,6 @@ def print_finished_report(jobs):
                 if not entry["finish_path"].exists():
                     print(f"MISSING\t{entry['finish_path']}")
     print(f"\nFinished {total_finished}/{total_expected} expected training logs.")
-
-
-def print_jobs(args, jobs):
-    printed = 0
-    skipped = 0
-    for entries in jobs.values():
-        for entry in entries:
-            if args.rerun_finished or not entry["finish_path"].exists():
-                print(entry["command"])
-                printed += 1
-            else:
-                skipped += 1
-    print(f"\nPrinted {printed} command(s); skipped {skipped} finished command(s).", file=sys.stderr)
 
 
 def main():
@@ -250,6 +251,45 @@ def main():
         action="store_true",
         help="include commands whose expected training log already exists",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print sbatch scripts (or local commands, with --local) without running them",
+    )
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help=(
+            "run each job's steps directly in the foreground, instead of "
+            "submitting SLURM jobs; ignores SLURM resource flags"
+        ),
+    )
+    parser.add_argument(
+        "--apptainer-image",
+        type=str,
+        default=default_apptainer_image(),
+        help=f"path to the Cherimoya Apptainer .sif image (default: {default_apptainer_image()})",
+    )
+    parser.add_argument("--apptainer-bind", action="append", default=None)
+    parser.add_argument(
+        "--gpus",
+        type=str,
+        default="|".join(
+            [
+                "GPU_SKU:A100_PCIE",
+                "GPU_SKU:A100_SXM4",
+                "GPU_SKU:A40",
+                "GPU_SKU:H100_SXM5",
+                "GPU_SKU:H200_SXM5",
+                "GPU_SKU:L40S",
+                "GPU_SKU:RTX_3090",
+            ]
+        ),
+    )
+    parser.add_argument("--partition", type=str, default="akundaje,gpu,owners")
+    parser.add_argument("--cpus-per-task", type=int, default=4)
+    parser.add_argument("--mem", type=str, default="64G")
+    parser.add_argument("--time", type=str, default="2-00:00:00")
     args = parser.parse_args()
 
     if args.run is None:
@@ -265,13 +305,124 @@ def main():
             file=sys.stderr,
         )
         sys.exit(1)
+    args.pseudobulk = selected
 
     jobs = build_jobs(args, species)
     if args.check_finished:
         print_finished_report(jobs)
         return
 
-    print_jobs(args, jobs)
+    log_dir = species_config.logs_dir(species) / "cherimoya_da_finetuning"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    apptainer_binds = args.apptainer_bind or [str(REPO_ROOT)]
+    apptainer_bind_args = " ".join(f"--bind {shlex.quote(p)}" for p in apptainer_binds)
+
+    submitted = 0
+    skipped_empty = 0
+    skipped_steps = 0
+    local_failures = []
+
+    for (run_group, pseudobulk, fold), entries in jobs.items():
+        steps = []
+        for entry in entries:
+            if args.rerun_finished or not entry["finish_path"].exists():
+                steps.append(entry["command"])
+            else:
+                skipped_steps += 1
+        if not steps:
+            skipped_empty += 1
+            continue
+
+        job_name = f"da_ft_{run_group}_{args.dataset}_{pseudobulk}_f{fold}".replace(".", "p")
+
+        if args.local:
+            for cmd in steps:
+                full_cmd = [
+                    "apptainer",
+                    "exec",
+                    "--nv",
+                    *[part for path in apptainer_binds for part in ("--bind", path)],
+                    args.apptainer_image,
+                    *cmd,
+                ]
+                if args.dry_run:
+                    print(shlex.join(full_cmd))
+                    continue
+                print(f"=== {job_name}: {' '.join(cmd)} ===")
+                result = subprocess.run(full_cmd, cwd=REPO_ROOT)
+                if result.returncode != 0:
+                    local_failures.append((job_name, cmd, result.returncode))
+                    print(f"ERROR: step exited with {result.returncode}", file=sys.stderr)
+            submitted += 1
+            continue
+
+        # Built with explicit indentation (rather than shlex.join()-ing the
+        # whole line, which would quote the "$APPTAINER_IMAGE" placeholder
+        # itself and break bash variable expansion) and joined with the
+        # same 12-space indent as the rest of the template below, so the
+        # final textwrap.dedent() still finds a common prefix across every
+        # line.
+        step_lines = [
+            f'time apptainer exec --nv {apptainer_bind_args} "$APPTAINER_IMAGE" '
+            + " ".join(shlex.quote(part) for part in cmd)
+            for cmd in steps
+        ]
+        run_block = "\n\n            ".join(step_lines)
+
+        sbatch_script = textwrap.dedent(f"""\
+            #!/bin/bash -l
+            #SBATCH --job-name={job_name}
+            #SBATCH --ntasks=1
+            #SBATCH --ntasks-per-node=1
+            #SBATCH --nodes=1
+            #SBATCH --gpus=1
+            #SBATCH -C {args.gpus}
+            #SBATCH --cpus-per-task={args.cpus_per_task}
+            #SBATCH --mem={args.mem}
+            #SBATCH --partition={args.partition}
+            #SBATCH --time={args.time}
+            #SBATCH --output={log_dir}/{job_name}.out
+            #SBATCH --error={log_dir}/{job_name}.err
+
+            APPTAINER_IMAGE="{args.apptainer_image}"
+
+            nvidia-smi -L
+
+            {run_block}
+        """)
+
+        if args.dry_run:
+            print(f"--- {job_name} ({len(steps)} step(s)) ---")
+            print(sbatch_script)
+            submitted += 1
+            continue
+
+        result = subprocess.run(
+            ["sbatch"], input=sbatch_script, capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            print(f"{job_name}: {result.stdout.strip()}")
+            submitted += 1
+        else:
+            print(f"ERROR submitting {job_name}: {result.stderr.strip()}", file=sys.stderr)
+
+    if args.local:
+        action = "Would run" if args.dry_run else "Ran"
+        unit = "job(s)"
+    else:
+        action = "Would submit" if args.dry_run else "Submitted"
+        unit = "sbatch job(s)"
+    print(
+        f"\n{action} {submitted} {unit}; skipped {skipped_empty} fully-finished "
+        f"job(s), {skipped_steps} finished step(s)."
+    )
+    if args.local and not args.dry_run:
+        if local_failures:
+            print(f"{len(local_failures)} step(s) failed:")
+            for job_name, cmd, returncode in local_failures:
+                print(f"  {job_name}: {' '.join(cmd)} (exit {returncode})")
+        else:
+            print("All steps completed successfully.")
 
 
 if __name__ == "__main__":

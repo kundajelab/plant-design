@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect and print unfinished Cherimoya benchmark jobs for active model variants.
+"""Submit SLURM jobs to benchmark active Cherimoya model variants.
 
 This launcher covers the main reporting path:
 
@@ -10,14 +10,35 @@ This launcher covers the main reporting path:
 Development-only adapter parameter sweeps are handled separately by
 ``benchmark_lora_sweep.py``.
 
-Prints one shell command per missing benchmark output; pipe into `parallel`
-or run directly. Jobs run via `uv run --frozen` inside the shared
-plant-design environment.
+One job is submitted per variant, bundling its cross-pseudobulk
+benchmark.py calls plus benchmark_da.py and (base dataset only)
+pairwise_correlations_predicted.py into a single sbatch script -- these
+steps are individually quick, so one job per pseudobulk would mostly be
+SLURM scheduling overhead.
+
+By default, jobs run via `apptainer exec --nv` against the Cherimoya
+Apptainer image (see ../apptainer/).
+
+--local skips SLURM entirely and runs each variant's steps directly in the
+foreground with inherited stdout/stderr, instead of submitting SLURM jobs.
+Combined with --dry-run, --local prints one runnable command per step
+instead of running them -- pipe that into something like
+`simple_gpu_scheduler`.
+
+Usage:
+    python src/cherimoya_pipeline/benchmark/launch.py
+    python src/cherimoya_pipeline/benchmark/launch.py --dry-run
+    python src/cherimoya_pipeline/benchmark/launch.py --variant base --variant finetuned
+    python src/cherimoya_pipeline/benchmark/launch.py --local
+    python src/cherimoya_pipeline/benchmark/launch.py --local --dry-run
 """
 
 import argparse
+import os
 import shlex
+import subprocess
 import sys
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,7 +48,6 @@ import species_config
 
 BENCHMARK_DIR = REPO_ROOT / "src" / "cherimoya_pipeline" / "benchmark"
 DATASETS = ("base", "fine", "coarse")
-PYTHON = ("uv", "run", "--frozen", "python")
 
 
 @dataclass(frozen=True)
@@ -94,6 +114,17 @@ VARIANTS = {
 }
 
 
+def default_apptainer_image():
+    return os.environ.get(
+        "CHERIMOYA_APPTAINER_IMAGE",
+        f"/scratch/users/{os.environ.get('USER', '')}/apptainer/cherimoya.sif",
+    )
+
+
+def slurm_name(text):
+    return text.replace("/", "_").replace(".", "p").replace("+", "_").replace("-", "_")
+
+
 def existing_cross_path(species, dataset_name, variant, pseudobulk):
     metrics_root = species_config.performance_metrics_dir(species)
     metrics_subdir = (
@@ -130,8 +161,9 @@ def benchmark_da_peaks_path(da_path):
     )
 
 
-def build_variant_job(args, species, variant):
-    commands = []
+def build_variant_steps(args, species, variant):
+    """Return (list of command-part lists, skipped count) for one variant."""
+    steps = []
     skipped = 0
 
     for pseudobulk in args.pseudobulks:
@@ -142,8 +174,8 @@ def build_variant_job(args, species, variant):
             skipped += 1
             continue
         cmd = [
-            *PYTHON,
-            BENCHMARK_DIR / "benchmark.py",
+            "python",
+            str(BENCHMARK_DIR / "benchmark.py"),
             "--species",
             species,
             "--dataset",
@@ -151,14 +183,14 @@ def build_variant_job(args, species, variant):
             "-p",
             pseudobulk,
             "-b",
-            args.batch_size,
+            str(args.batch_size),
             *variant.flags,
         ]
         if args.save_cross_outputs:
             cmd.append("--save-output")
         if args.verbose:
             cmd.append("-v")
-        commands.append(" ".join(shlex.quote(str(part)) for part in cmd))
+        steps.append(cmd)
 
     da_path = existing_da_path(species, args.dataset, variant)
     da_done = da_path is not None and (
@@ -166,64 +198,58 @@ def build_variant_job(args, species, variant):
     )
     if not da_done or args.rerun:
         cmd = [
-            *PYTHON,
-            BENCHMARK_DIR / "benchmark_da.py",
+            "python",
+            str(BENCHMARK_DIR / "benchmark_da.py"),
             "--species",
             species,
             "--dataset",
             args.dataset,
             "-b",
-            args.batch_size,
+            str(args.batch_size),
             *variant.flags,
         ]
         if args.save_da_outputs:
             cmd.append("--save-output")
         if args.verbose:
             cmd.append("-v")
-        commands.append(" ".join(shlex.quote(str(part)) for part in cmd))
+        steps.append(cmd)
     else:
         skipped += 1
 
     if args.dataset != "base":
-        return commands, skipped
+        return steps, skipped
 
     pairwise_path = species_config.performance_metrics_dir(species) / variant.pairwise_path
     if not pairwise_path.exists() or args.rerun:
-        commands.append(
-            " ".join(
-                shlex.quote(str(part))
-                for part in [
-                    *PYTHON,
-                    BENCHMARK_DIR / "pairwise_correlations_predicted.py",
-                    "--species",
-                    species,
-                    *variant.flags,
-                ]
-            )
+        steps.append(
+            [
+                "python",
+                str(BENCHMARK_DIR / "pairwise_correlations_predicted.py"),
+                "--species",
+                species,
+                *variant.flags,
+            ]
         )
     else:
         skipped += 1
 
-    return commands, skipped
+    return steps, skipped
 
 
-def print_jobs(jobs):
-    printed = 0
-    skipped = 0
-    for commands, n_skipped in jobs:
-        for command in commands:
-            print(command)
-            printed += 1
-        skipped += n_skipped
-    print(
-        f"\nPrinted {printed} command(s); skipped {skipped} already-complete step(s).",
-        file=sys.stderr,
-    )
+def apptainer_wrap(cmd, apptainer_image, apptainer_bind_args_list):
+    return [
+        "apptainer",
+        "exec",
+        "--nv",
+        *[part for path in apptainer_bind_args_list for part in ("--bind", path)],
+        apptainer_image,
+        *cmd,
+    ]
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     species_config.add_species_arg(parser)
     parser.add_argument(
@@ -233,12 +259,7 @@ def main():
         default=None,
         help="Model variant to benchmark; repeatable. Default: all active variants.",
     )
-    parser.add_argument(
-        "--pseudobulk",
-        dest="pseudobulks",
-        action="append",
-        default=None,
-    )
+    parser.add_argument("--pseudobulk", dest="pseudobulks", action="append", default=None)
     parser.add_argument(
         "--dataset",
         choices=DATASETS,
@@ -246,6 +267,26 @@ def main():
         help="Dataset namespace to benchmark (default: base).",
     )
     parser.add_argument("--rerun", action="store_true")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print sbatch scripts (or local commands, with --local) without running them",
+    )
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help=(
+            "run each variant's steps directly in the foreground, instead "
+            "of submitting SLURM jobs; ignores SLURM resource flags"
+        ),
+    )
+    parser.add_argument(
+        "--apptainer-image",
+        type=str,
+        default=default_apptainer_image(),
+        help=f"path to the Cherimoya Apptainer .sif image (default: {default_apptainer_image()})",
+    )
+    parser.add_argument("--apptainer-bind", action="append", default=None)
     parser.add_argument("--save-cross-outputs", action="store_true")
     parser.add_argument(
         "--no-save-da-outputs",
@@ -255,6 +296,25 @@ def main():
     )
     parser.set_defaults(save_da_outputs=True)
     parser.add_argument("-b", "--batch-size", type=int, default=64)
+    parser.add_argument(
+        "--gpus",
+        type=str,
+        default="|".join(
+            [
+                "GPU_SKU:A100_PCIE",
+                "GPU_SKU:A100_SXM4",
+                "GPU_SKU:A40",
+                "GPU_SKU:H100_SXM5",
+                "GPU_SKU:H200_SXM5",
+                "GPU_SKU:L40S",
+                "GPU_SKU:RTX_3090",
+            ]
+        ),
+    )
+    parser.add_argument("--partition", type=str, default="akundaje,gpu,owners")
+    parser.add_argument("--cpus-per-task", type=int, default=4)
+    parser.add_argument("--mem", type=str, default="32G")
+    parser.add_argument("--time", type=str, default="2:00:00")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -269,9 +329,110 @@ def main():
                 file=sys.stderr,
             )
             sys.exit(1)
-    variant_names = args.variant or list(VARIANTS)
-    jobs = [build_variant_job(args, species, VARIANTS[name]) for name in variant_names]
-    print_jobs(jobs)
+
+    variant_names = args.variant or (["base"] if args.dataset != "base" else list(VARIANTS))
+    log_dir = species_config.logs_dir(species) / "cherimoya_benchmark"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    apptainer_binds = args.apptainer_bind or [str(REPO_ROOT)]
+    apptainer_bind_args = " ".join(f"--bind {shlex.quote(p)}" for p in apptainer_binds)
+
+    submitted = 0
+    skipped_empty = 0
+    skipped_steps = 0
+    local_failures = []
+
+    for name in variant_names:
+        variant = VARIANTS[name]
+        steps, n_skipped = build_variant_steps(args, species, variant)
+        skipped_steps += n_skipped
+        if not steps:
+            skipped_empty += 1
+            continue
+
+        job_name = slurm_name(f"benchmark_{args.dataset}_{variant.name}")
+
+        if args.local:
+            for cmd in steps:
+                full_cmd = apptainer_wrap(cmd, args.apptainer_image, apptainer_binds)
+                if args.dry_run:
+                    print(shlex.join(full_cmd))
+                    continue
+                print(f"=== {job_name}: {' '.join(cmd)} ===")
+                result = subprocess.run(full_cmd, cwd=REPO_ROOT)
+                if result.returncode != 0:
+                    local_failures.append((job_name, cmd, result.returncode))
+                    print(f"ERROR: step exited with {result.returncode}", file=sys.stderr)
+            submitted += 1
+            continue
+
+        # Built with explicit indentation (rather than shlex.join()-ing the
+        # whole line, which would quote the "$APPTAINER_IMAGE" placeholder
+        # itself into '$APPTAINER_IMAGE' and break bash variable expansion)
+        # and joined with the same 12-space indent as the rest of the
+        # template below, so the final textwrap.dedent() still finds a
+        # common prefix across every line -- a mismatched indent here
+        # leaves the whole script indented, which sbatch rejects as "not a
+        # batch script".
+        step_lines = [
+            f'time apptainer exec --nv {apptainer_bind_args} "$APPTAINER_IMAGE" '
+            + " ".join(shlex.quote(part) for part in cmd)
+            for cmd in steps
+        ]
+        run_block = "\n\n            ".join(step_lines)
+        sbatch_script = textwrap.dedent(f"""\
+            #!/bin/bash -l
+            #SBATCH --job-name={job_name}
+            #SBATCH --ntasks=1
+            #SBATCH --ntasks-per-node=1
+            #SBATCH --nodes=1
+            #SBATCH --gpus=1
+            #SBATCH -C {args.gpus}
+            #SBATCH --cpus-per-task={args.cpus_per_task}
+            #SBATCH --mem={args.mem}
+            #SBATCH --partition={args.partition}
+            #SBATCH --time={args.time}
+            #SBATCH --output={log_dir}/{job_name}.out
+            #SBATCH --error={log_dir}/{job_name}.err
+
+            APPTAINER_IMAGE="{args.apptainer_image}"
+
+            nvidia-smi -L
+
+            {run_block}
+        """)
+
+        if args.dry_run:
+            print(f"--- {job_name} ({len(steps)} step(s), skipped {n_skipped}) ---")
+            print(sbatch_script)
+            submitted += 1
+            continue
+
+        result = subprocess.run(
+            ["sbatch"], input=sbatch_script, capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            print(f"{job_name}: {result.stdout.strip()}")
+            submitted += 1
+        else:
+            print(f"ERROR submitting {job_name}: {result.stderr.strip()}", file=sys.stderr)
+
+    if args.local:
+        action = "Would run" if args.dry_run else "Ran"
+        unit = "variant(s)"
+    else:
+        action = "Would submit" if args.dry_run else "Submitted"
+        unit = "sbatch job(s)"
+    print(
+        f"\n{action} {submitted} {unit}; skipped {skipped_empty} empty variant(s), "
+        f"{skipped_steps} already-complete step(s)."
+    )
+    if args.local and not args.dry_run:
+        if local_failures:
+            print(f"{len(local_failures)} step(s) failed:")
+            for job_name, cmd, returncode in local_failures:
+                print(f"  {job_name}: {' '.join(cmd)} (exit {returncode})")
+        else:
+            print("All steps completed successfully.")
 
 
 if __name__ == "__main__":

@@ -8,9 +8,13 @@ is no separate bias-model stage and no post-hoc PyTorch conversion step
 `chrombpnet` branch).
 
 `cherimoya` is a Linux-only core dependency of the `plant-design` project
-(its `torch>=2.9`/`triton>=3.5.1` requirement has no macOS wheels), so
-training and negative sampling both run via `uv run` on a Linux GPU
-machine.
+(its `torch>=2.9`/`triton>=3.5.1` requirement has no macOS wheels). Training
+and negative sampling both submit SLURM jobs by default, running via
+`apptainer exec --nv` against the Cherimoya Apptainer image (see
+`../apptainer/`) rather than `uv run` directly -- pass `--local` to run in
+the foreground on a GPU box you already have a shell on instead of
+submitting to SLURM (combine with `--dry-run` to print commands for
+`simple_gpu_scheduler`/`parallel` instead of running them).
 
 ## Inputs
 
@@ -39,25 +43,29 @@ Negatives are sampled once per pseudobulk (not per fold) -- Cherimoya's own
 filtering already restricts both peaks and negatives to the active fold.
 
 ```bash
-uv run python src/cherimoya_pipeline/fit/negatives.py
-uv run python src/cherimoya_pipeline/fit/negatives.py --species A.thaliana | parallel
+python src/cherimoya_pipeline/fit/negatives.py
+python src/cherimoya_pipeline/fit/negatives.py --species A.thaliana
+python src/cherimoya_pipeline/fit/negatives.py --local --dry-run | parallel
 ```
 
 ## Train
 
-No SLURM integration: `launch.py` collects pseudobulk/fold jobs with a
-missing model checkpoint and prints one command per job to stdout.
+`launch.py` submits one SLURM job per pseudobulk with a missing model
+checkpoint (looping over that pseudobulk's folds in the job); `--dry-run`
+prints the generated sbatch scripts instead of submitting.
 
 ```bash
-uv run python src/cherimoya_pipeline/fit/launch.py | parallel -j 4
-uv run python src/cherimoya_pipeline/fit/launch.py --dataset coarse
-uv run python src/cherimoya_pipeline/fit/launch.py -p bundle_sheath -f 0
+python src/cherimoya_pipeline/fit/launch.py
+python src/cherimoya_pipeline/fit/launch.py --dry-run
+python src/cherimoya_pipeline/fit/launch.py --dataset coarse
+python src/cherimoya_pipeline/fit/launch.py -p bundle_sheath -f 0
+python src/cherimoya_pipeline/fit/launch.py --local --dry-run | simple_gpu_scheduler --gpus 0,1,2,3
 ```
 
 Useful training knobs (see `train_cherimoya.py --help` for the full list):
 
 ```bash
-uv run python src/cherimoya_pipeline/fit/launch.py \
+python src/cherimoya_pipeline/fit/launch.py \
     --n-filters 128 \
     --n-layers 9 \
     --max-epochs 50 \

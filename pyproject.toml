@@ -10,12 +10,6 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "bam2bw",
     "bpnet-lite",
-    # cherimoya>=0.2.0 requires torch>=2.9 and triton>=3.5.1; bpnet-lite/
-    # daicon/tangermeme don't pin torch themselves, so they follow whatever
-    # is resolved here. triton has no macOS wheels at all (Linux/CUDA-only
-    # compiler toolchain), so cherimoya is Linux-only -- Cherimoya training/
-    # benchmarking happens on Linux GPU machines regardless.
-    "cherimoya>=0.2.0; sys_platform == 'linux'",
     "daicon",
     "huggingface-hub",
     "joblib",
@@ -38,13 +32,42 @@ dependencies = [
     "scipy",
     "seaborn",
     "tangermeme>=1.4.0",
-    "torch>=2.9.0; sys_platform == 'linux'",
-    "torch; sys_platform != 'linux'",
     "tqdm",
 ]
 
 [project.optional-dependencies]
 hub = ["huggingface-hub"]
+# torch is not a base dependency: torch>2.6.0 cannot install on Sherlock at
+# all, while Cherimoya needs its real torch>=2.9.0/triton>=3.5.1. These
+# can't be satisfied by one resolution, so each lives in its own extra
+# below (mirroring the sibling procap-atlas project), declared mutually
+# exclusive via tool.uv.conflicts so uv resolves them independently instead
+# of unifying bpnet-lite/daicon/tangermeme/ledidi's own unconstrained
+# "torch" dependency with whichever extra's constraint into one version.
+#
+# cherimoya>=0.2.0 requires torch>=2.9 and triton>=3.5.1; triton has no
+# macOS wheels at all (Linux/CUDA-only compiler toolchain), so this extra
+# is Linux-only. Its torch>=2.9 also needs newer CUDA than Sherlock's
+# driver supports -- install this extra on a GPU machine whose driver
+# actually supports it (e.g. the akundaje Oak GPU nodes):
+# `uv sync --frozen --extra cherimoya`. Apptainer bypasses this extra
+# entirely on Sherlock (src/cherimoya_pipeline/apptainer/).
+cherimoya = [
+    "cherimoya>=0.2.0; sys_platform == 'linux'",
+    "torch>=2.9.0; sys_platform == 'linux'",
+]
+# The torch every other platform/use case gets: capped at 2.6.0 on Linux
+# (the newest release Sherlock's pip/uv can actually install), unconstrained
+# elsewhere. `uv sync --frozen --extra sherlock` on Sherlock; every
+# cherimoya_pipeline launcher script works fine with neither extra
+# installed at all (they only resolve paths and print/submit jobs -- no
+# torch import needed), so this extra is only for anything that actually
+# wants to run bpnet-lite/daicon/tangermeme for real on Sherlock, outside
+# the Apptainer image.
+sherlock = [
+    "torch<=2.6.0; sys_platform == 'linux'",
+    "torch; sys_platform != 'linux'",
+]
 # MotifCompendium and personal_bpnet are external/local research dependencies
 # until resolvable install sources are confirmed.
 # Metaformer / promoterai-torch is still in development and will be added
@@ -65,19 +88,14 @@ exclude-dependencies = ["macs3"]
 required-environments = [
     "sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
-
-[[tool.uv.index]]
-# Default PyPI linux torch wheels now require a newer CUDA runtime than
-# Sherlock GPU nodes' drivers support (driver reports max CUDA 12.9, but the
-# plain PyPI wheel needs CUDA 13+ and fails with "CUDA driver too old" at
-# torch.cuda init). Pin to the cu129 build instead.
-name = "pytorch-cu129"
-url = "https://download.pytorch.org/whl/cu129"
-explicit = true
-
-[tool.uv.sources]
-torch = [
-    { index = "pytorch-cu129", marker = "sys_platform == 'linux'" },
+# sherlock's torch<=2.6.0 pin and cherimoya's real torch>=2.9.0 requirement
+# are never installed together, so let uv resolve them independently
+# instead of forcing one universal torch version across both.
+conflicts = [
+    [
+        { extra = "sherlock" },
+        { extra = "cherimoya" },
+    ],
 ]
 
 [tool.setuptools]

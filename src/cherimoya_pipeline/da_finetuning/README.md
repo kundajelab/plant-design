@@ -61,12 +61,17 @@ uv run python src/cherimoya_pipeline/da_finetuning/finetune_da.py \
 
 ## Standard Launcher
 
-No SLURM integration: `launch.py` collects and prints all standard
-full-model and adapter run commands whose expected training log is missing;
-pipe into `parallel`/`simple_gpu_scheduler` or run directly.
+`launch.py` submits one SLURM job per (run group, pseudobulk, fold),
+bundling that combination's DA-fraction variants into a single sbatch
+script that runs via `apptainer exec --nv` against the Cherimoya Apptainer
+image (see `../apptainer/`). `--dry-run` prints the generated sbatch
+scripts instead of submitting; `--local` runs in the foreground instead of
+submitting to SLURM (combine with `--dry-run` to print one command per step
+for `simple_gpu_scheduler`).
 
 ```bash
 uv run python src/cherimoya_pipeline/da_finetuning/launch.py
+uv run python src/cherimoya_pipeline/da_finetuning/launch.py --dry-run
 uv run python src/cherimoya_pipeline/da_finetuning/launch.py --dataset coarse
 uv run python src/cherimoya_pipeline/da_finetuning/launch.py --dataset fine
 ```
@@ -98,6 +103,9 @@ uv run python src/cherimoya_pipeline/da_finetuning/launch.py \
 ```
 
 ## Adapter Sweeps
+
+`launch_adapter_sweep.py` submits one SLURM job per (pseudobulk, fold,
+hyperparameter combo) the same way (`--dry-run`/`--local` supported).
 
 Run a configured adapter sweep:
 
