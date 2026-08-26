@@ -9,33 +9,23 @@ dataset="${DATASET:-base}"
 data_root="${REPO_ROOT}/data/${species}"
 config_dir="${REPO_ROOT}/configs/${species}"
 
-# base/fine/coarse pull fragments from different Oak sources with different
-# pseudobulk namespaces (see configs/<species>/pseudobulks{_fine,_coarse}.txt),
-# so both the fetch location and the local/output namespacing vary by dataset.
 case "${dataset}" in
-    base)
-        default_data_dir="/oak/stanford/groups/akundaje/ayhe/plant-design/data/pseudobulk_fragments"
-        default_ref_dir="/oak/stanford/groups/akundaje/ayhe/plant-design/data"
-        dataset_suffix=""
-        ;;
-    fine)
-        default_data_dir="/oak/stanford/groups/akundaje/ayhe/plant-design/data/pseudobulk_encode_fine"
-        default_ref_dir="/oak/stanford/groups/akundaje/ayhe/plant-design/data"
-        dataset_suffix="_fine"
-        ;;
-    coarse)
-        default_data_dir="/oak/stanford/groups/akundaje/ayhe/plant-design/data/pseudobulk_encode_coarse"
-        default_ref_dir="/oak/stanford/groups/akundaje/ayhe/plant-design/data"
-        dataset_suffix="_coarse"
-        ;;
+    base) dataset_suffix="" ;;
+    fine) dataset_suffix="_fine" ;;
+    coarse) dataset_suffix="_coarse" ;;
     *)
         echo "Unknown DATASET '${dataset}' (expected base, fine, or coarse)." >&2
         exit 1
         ;;
 esac
 
-data_dir="${DATA_DIR:-${default_data_dir}}"
-ref_dir="${REF_DIR:-${default_ref_dir}}"
+# The pipeline runs directly on Oak (REPO_ROOT itself lives under
+# /oak/stanford/groups/akundaje/ayhe/plant-design/), so fragments and the
+# genome are read straight out of data/<species>/ by default -- no separate
+# absolute Oak source path needed. Override DATA_DIR/REF_DIR for sources
+# that live somewhere else on Oak.
+data_dir="${DATA_DIR:-${data_root}/fragments${dataset_suffix}}"
+ref_dir="${REF_DIR:-${data_root}}"
 out_dir="${OUT_DIR:-${data_root}/bigwigs${dataset_suffix}}"
 # Resolved from configs/<species>/species.json (the same manifest
 # species_config.genome_fasta() reads) unless overridden. Must NOT default

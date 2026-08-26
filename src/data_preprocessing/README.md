@@ -32,21 +32,24 @@ data/<species>/bigwigs_fine/
 source, output dir, pseudobulk list) once, then prints one `bam2bw -f` command
 per pseudobulk in `--dataset` to stdout -- like the other launchers in this
 repo, it doesn't run them itself. Pipe into `parallel`/`simple_gpu_scheduler`
-to actually run the jobs. Fragments are read straight from `DATA_DIR` on Oak
-(the whole pipeline runs on Oak, so there's no local fragments copy/cache
-step). `$SPECIES` selects the namespace (default `S.bicolor`); `$DATASET`
-selects `base`/`fine`/`coarse` (default `base`) and switches the Oak source
-path, the `configs/<species>/pseudobulks{_fine,_coarse}.txt` pseudobulk list,
-and the `data/<species>/bigwigs{_fine,_coarse}/` output dir together. Other
-knobs (`DATA_DIR`, `REF_DIR`, `OUT_DIR`, `FRAGMENTS_SUFFIX`,
-`PSEUDOBULKS_FILE`) override the per-dataset defaults. `GENOME_FASTA_NAME`
-defaults to whatever `configs/<species>/species.json` names (the same
-manifest `species_config.genome_fasta()` reads) rather than to Sorghum's
-filename, so other species don't silently look for a genome that was never
-fetched under their own `data/<species>/`. The genome rsync/faidx/chrom-sizes
-steps are skipped automatically if the genome is already present, so species
-whose genome was fetched a different way (see "Arabidopsis" below) don't
-need a working `REF_DIR`.
+to actually run the jobs. The pipeline runs directly on Oak (this repo's
+checkout lives under `/oak/stanford/groups/akundaje/ayhe/plant-design/`), so
+by default fragments and the genome are read straight out of
+`data/<species>/fragments{_fine,_coarse}/` and `data/<species>/` -- no
+separate absolute Oak source path to configure. `$SPECIES` selects the
+namespace (default `S.bicolor`); `$DATASET` selects `base`/`fine`/`coarse`
+(default `base`) and switches the fragments subdirectory, the
+`configs/<species>/pseudobulks{_fine,_coarse}.txt` pseudobulk list, and the
+`data/<species>/bigwigs{_fine,_coarse}/` output dir together. Other knobs
+(`DATA_DIR`, `REF_DIR`, `OUT_DIR`, `FRAGMENTS_SUFFIX`, `PSEUDOBULKS_FILE`)
+override the defaults for sources that live somewhere else on Oak.
+`GENOME_FASTA_NAME` defaults to whatever `configs/<species>/species.json`
+names (the same manifest `species_config.genome_fasta()` reads) rather than
+to Sorghum's filename, so other species don't silently look for a genome
+that was never fetched under their own `data/<species>/`. The genome
+rsync/faidx/chrom-sizes steps are skipped automatically if the genome is
+already present, so species whose genome was fetched a different way (see
+"Arabidopsis" below) don't need a working `REF_DIR`.
 
 ```bash
 bash src/data_preprocessing/make_bigwigs.sh | parallel -j 8
@@ -81,9 +84,8 @@ DATA_DIR=/oak/stanford/groups/akundaje/ayhe/plant-design/data/A.thaliana/peaks \
 bash src/data_preprocessing/cp_peaks.sh
 
 SPECIES=A.thaliana \
-DATA_DIR=/oak/stanford/groups/akundaje/ayhe/plant-design/data/A.thaliana/fragments \
 FRAGMENTS_SUFFIX=.fragments.tsv.gz \
-bash src/data_preprocessing/make_bigwigs.sh | parallel -j 8
+bash src/data_preprocessing/make_bigwigs.sh | parallel -j 4
 ```
 
 ## Differential Accessibility
