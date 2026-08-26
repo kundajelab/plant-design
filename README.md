@@ -33,8 +33,8 @@ Convert ATAC fragment files to per-pseudobulk bigwigs:
 
 ```bash
 bash src/data_preprocessing/make_bigwigs.sh
-bash src/data_preprocessing/make_bigwigs_fine.sh
-bash src/data_preprocessing/make_bigwigs_coarse.sh
+DATASET=fine bash src/data_preprocessing/make_bigwigs.sh
+DATASET=coarse bash src/data_preprocessing/make_bigwigs.sh
 ```
 
 Expected data layout under `data/<species>/` (default species: `S.bicolor`):

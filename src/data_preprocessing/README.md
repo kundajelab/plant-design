@@ -28,27 +28,37 @@ data/<species>/bigwigs_fine/
 
 ## BigWigs
 
-`make_bigwigs.sh` converts pseudobulk fragment alignments into shifted bigWigs.
-It is cluster/path-specific, so inspect the source paths before running it on a
-new filesystem. `$SPECIES` selects the namespace (default `S.bicolor`); other
-knobs (`DATA_DIR`, `REF_DIR`, `OUT_DIR`, `FRAGMENTS_SUFFIX`,
-`PSEUDOBULKS_FILE`) override the per-species defaults. `GENOME_FASTA_NAME`
+`make_bigwigs.sh` converts pseudobulk fragment files into shifted bigWigs via
+`bam2bw -f` (records both Tn5 insertion sites per fragment). It is
+cluster/path-specific, so inspect the source paths before running it on a new
+filesystem. `$SPECIES` selects the namespace (default `S.bicolor`); `$DATASET`
+selects `base`/`fine`/`coarse` (default `base`) and switches the Oak source
+path, the local `data/<species>/fragments{_fine,_coarse}/` cache dir, the
+`configs/<species>/pseudobulks{_fine,_coarse}.txt` pseudobulk list, and the
+`data/<species>/bigwigs{_fine,_coarse}/` output dir together. Other knobs
+(`DATA_DIR`, `REF_DIR`, `OUT_DIR`, `FRAGMENTS_DIR`, `FRAGMENTS_SUFFIX`,
+`PSEUDOBULKS_FILE`) override the per-dataset defaults. `GENOME_FASTA_NAME`
 defaults to whatever `configs/<species>/species.json` names (the same
 manifest `species_config.genome_fasta()` reads) rather than to Sorghum's
 filename, so other species don't silently look for a genome that was never
 fetched under their own `data/<species>/`. The genome rsync/faidx/chrom-sizes
 steps are skipped automatically if the genome is already present, so species
 whose genome was fetched a different way (see "Arabidopsis" below) don't
-need a working `REF_DIR`.
+need a working `REF_DIR`. Fragments are always rsynced into the local
+`FRAGMENTS_DIR` cache before `bam2bw` reads them -- never read directly out of
+`DATA_DIR` -- and skipped on repeat runs once cached, so a run only needs live
+Oak access the first time through for each pseudobulk.
 
 ```bash
 bash src/data_preprocessing/make_bigwigs.sh
+DATASET=fine bash src/data_preprocessing/make_bigwigs.sh
+DATASET=coarse bash src/data_preprocessing/make_bigwigs.sh
 ```
 
 ### Arabidopsis (A.thaliana)
 
 The `MoralesArabidopsis` pseudobulk dataset lives at
-`/oak/stanford/projects/sorghum/MoralesArabidopsis/pseudobulk_tracks/` with
+`/oak/stanford/groups/akundaje/ayhe/plant-design/data/A.thaliana/` with
 `peaks/` and `fragments/` subdirectories; `configs/A.thaliana/pseudobulks.txt`
 lists its 30 cell types. Its fragment files are named
 `<pseudobulk>.fragments.tsv.gz` (dot separator), unlike Sorghum's
@@ -68,7 +78,7 @@ Copy peaks and build bigWigs:
 ## REPLACE THIS WHEN PROJECT GOES PUBLIC WITH DIRECT DOWNLOADS FROM ZENODO/ETC
 SPECIES=A.thaliana \
 DATASET=base \
-DATA_DIR=/oak/stanford/projects/sorghum/MoralesArabidopsis/pseudobulk_tracks/peaks \
+DATA_DIR=/oak/stanford/groups/akundaje/ayhe/plant-design/data/A.thaliana/peaks \
 bash src/data_preprocessing/cp_peaks.sh
 
 SPECIES=A.thaliana \

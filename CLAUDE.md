@@ -10,7 +10,7 @@ Cherimoya trains a single model end-to-end directly on raw signal — there is n
 
 **Species** (`configs/<species>/`, see `src/species_config.py`): default `S.bicolor` (6 pseudobulk cell types in `configs/S.bicolor/pseudobulks.txt`: bundle_sheath, epidermis, guard, mesophyll, phloem, xylem); every species, including the default, is namespaced under a same-named subdirectory (`configs/S.bicolor/`, `configs/A.thaliana/`, `data/S.bicolor/`, `data/A.thaliana/`, etc.) -- there is no flat/un-namespaced layout. Species are identified by Latin binomial everywhere (`--species` flag / `$SPECIES` env var).
 
-`A.thaliana` uses the `MoralesArabidopsis` root-atlas pseudobulk dataset (30 cell types in `configs/A.thaliana/pseudobulks.txt`, from `/oak/stanford/projects/sorghum/MoralesArabidopsis/pseudobulk_tracks/{peaks,fragments}/`) against the classic TAIR10 assembly (`data/A.thaliana/Athaliana_TAIR10.fa`, chromosomes `chr1`-`chr5`/`chrM`/`chrC` — see `src/data_preprocessing/download_arabidopsis_genome.sh`).
+`A.thaliana` uses the `MoralesArabidopsis` root-atlas pseudobulk dataset (30 cell types in `configs/A.thaliana/pseudobulks.txt`, from `/oak/stanford/groups/akundaje/ayhe/plant-design/data/A.thaliana/{peaks,fragments}/`) against the classic TAIR10 assembly (`data/A.thaliana/Athaliana_TAIR10.fa`, chromosomes `chr1`-`chr5`/`chrM`/`chrC` — see `src/data_preprocessing/download_arabidopsis_genome.sh`).
 
 ## Environment Setup
 
@@ -107,7 +107,7 @@ DeepLIFT/SHAP attribution pipeline (model-agnostic `bpnetlite`/`tangermeme` mach
 
 ### `src/data_preprocessing/`
 
-- **`make_bigwigs.sh`**: Converts per-pseudobulk fragment BAM files → strand-shifted bigwigs using `bam2bw`. Species-aware via `$SPECIES` (default `S.bicolor`; hardcoded Stanford Oak cluster path defaults).
+- **`make_bigwigs.sh`**: Converts per-pseudobulk fragment files → strand-shifted bigwigs using `bam2bw -f` (both Tn5 insertion sites per fragment). Species-aware via `$SPECIES` (default `S.bicolor`) and dataset-aware via `$DATASET` (`base`/`fine`/`coarse`, default `base`; hardcoded Stanford Oak cluster path defaults per dataset). Fragments are always rsynced into `data/<species>/fragments{_fine,_coarse}/` before conversion rather than read directly from Oak, so a run only needs a valid `DATA_DIR` once per pseudobulk. Outputs to `data/<species>/bigwigs{_fine,_coarse}/`.
 - **`differential_accessibility.py`**: Builds a union peak set from all pseudobulk narrowPeak files, extracts read counts from bigwigs, normalizes (CPM or TMM with `--tmm`), and computes per-peak specificity scores (log2FC, pairwise log2FC, tau). Outputs `da_peaks.csv`, `da_peaks_tau.bed`, `da_peaks_pairwise.bed`, per-cell-type ranked CSVs, and `summary.json` to `data/<species>/peaks/differential_accessibility/`. Must be run before `benchmark_da.py` or `finetune_da.py`. Model-agnostic; unchanged by the Cherimoya migration.
 
 ## Data Conventions
