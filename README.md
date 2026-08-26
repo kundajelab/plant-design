@@ -32,9 +32,9 @@ in the same env on any platform.
 Convert ATAC fragment files to per-pseudobulk bigwigs:
 
 ```bash
-bash src/data_preprocessing/make_bigwigs.sh
-DATASET=fine bash src/data_preprocessing/make_bigwigs.sh
-DATASET=coarse bash src/data_preprocessing/make_bigwigs.sh
+bash src/data_preprocessing/make_bigwigs.sh | parallel
+DATASET=fine bash src/data_preprocessing/make_bigwigs.sh | parallel
+DATASET=coarse bash src/data_preprocessing/make_bigwigs.sh | parallel
 ```
 
 Expected data layout under `data/<species>/` (default species: `S.bicolor`):

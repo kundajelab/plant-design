@@ -28,7 +28,7 @@ uv sync --frozen
 
 ```bash
 # 1. Preprocess: convert ATAC fragments → bigwigs
-bash src/data_preprocessing/make_bigwigs.sh
+bash src/data_preprocessing/make_bigwigs.sh | parallel
 
 # 2. Generate chromosome fold configs (if not already present)
 python configs/write_folds.py [--species S.bicolor]
@@ -107,7 +107,7 @@ DeepLIFT/SHAP attribution pipeline (model-agnostic `bpnetlite`/`tangermeme` mach
 
 ### `src/data_preprocessing/`
 
-- **`make_bigwigs.sh`**: Converts per-pseudobulk fragment files → strand-shifted bigwigs using `bam2bw -f` (both Tn5 insertion sites per fragment). Species-aware via `$SPECIES` (default `S.bicolor`) and dataset-aware via `$DATASET` (`base`/`fine`/`coarse`, default `base`; hardcoded Stanford Oak cluster path defaults per dataset). Fragments are always rsynced into `data/<species>/fragments{_fine,_coarse}/` before conversion rather than read directly from Oak, so a run only needs a valid `DATA_DIR` once per pseudobulk. Outputs to `data/<species>/bigwigs{_fine,_coarse}/`.
+- **`make_bigwigs.sh`**: Resolves paths and prints one `bam2bw -f` command per pseudobulk (both Tn5 insertion sites per fragment) to stdout -- pipe into `parallel`/`simple_gpu_scheduler` to run; reads fragments directly off Oak (the whole pipeline runs on Oak, so no local copy step). Species-aware via `$SPECIES` (default `S.bicolor`) and dataset-aware via `$DATASET` (`base`/`fine`/`coarse`, default `base`; hardcoded Stanford Oak cluster path defaults per dataset). Outputs to `data/<species>/bigwigs{_fine,_coarse}/`.
 - **`differential_accessibility.py`**: Builds a union peak set from all pseudobulk narrowPeak files, extracts read counts from bigwigs, normalizes (CPM or TMM with `--tmm`), and computes per-peak specificity scores (log2FC, pairwise log2FC, tau). Outputs `da_peaks.csv`, `da_peaks_tau.bed`, `da_peaks_pairwise.bed`, per-cell-type ranked CSVs, and `summary.json` to `data/<species>/peaks/differential_accessibility/`. Must be run before `benchmark_da.py` or `finetune_da.py`. Model-agnostic; unchanged by the Cherimoya migration.
 
 ## Data Conventions

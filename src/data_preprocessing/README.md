@@ -28,15 +28,17 @@ data/<species>/bigwigs_fine/
 
 ## BigWigs
 
-`make_bigwigs.sh` converts pseudobulk fragment files into shifted bigWigs via
-`bam2bw -f` (records both Tn5 insertion sites per fragment). It is
-cluster/path-specific, so inspect the source paths before running it on a new
-filesystem. `$SPECIES` selects the namespace (default `S.bicolor`); `$DATASET`
+`make_bigwigs.sh` resolves the right paths (genome/chrom-sizes, fragments
+source, output dir, pseudobulk list) once, then prints one `bam2bw -f` command
+per pseudobulk in `--dataset` to stdout -- like the other launchers in this
+repo, it doesn't run them itself. Pipe into `parallel`/`simple_gpu_scheduler`
+to actually run the jobs. Fragments are read straight from `DATA_DIR` on Oak
+(the whole pipeline runs on Oak, so there's no local fragments copy/cache
+step). `$SPECIES` selects the namespace (default `S.bicolor`); `$DATASET`
 selects `base`/`fine`/`coarse` (default `base`) and switches the Oak source
-path, the local `data/<species>/fragments{_fine,_coarse}/` cache dir, the
-`configs/<species>/pseudobulks{_fine,_coarse}.txt` pseudobulk list, and the
-`data/<species>/bigwigs{_fine,_coarse}/` output dir together. Other knobs
-(`DATA_DIR`, `REF_DIR`, `OUT_DIR`, `FRAGMENTS_DIR`, `FRAGMENTS_SUFFIX`,
+path, the `configs/<species>/pseudobulks{_fine,_coarse}.txt` pseudobulk list,
+and the `data/<species>/bigwigs{_fine,_coarse}/` output dir together. Other
+knobs (`DATA_DIR`, `REF_DIR`, `OUT_DIR`, `FRAGMENTS_SUFFIX`,
 `PSEUDOBULKS_FILE`) override the per-dataset defaults. `GENOME_FASTA_NAME`
 defaults to whatever `configs/<species>/species.json` names (the same
 manifest `species_config.genome_fasta()` reads) rather than to Sorghum's
@@ -44,15 +46,12 @@ filename, so other species don't silently look for a genome that was never
 fetched under their own `data/<species>/`. The genome rsync/faidx/chrom-sizes
 steps are skipped automatically if the genome is already present, so species
 whose genome was fetched a different way (see "Arabidopsis" below) don't
-need a working `REF_DIR`. Fragments are always rsynced into the local
-`FRAGMENTS_DIR` cache before `bam2bw` reads them -- never read directly out of
-`DATA_DIR` -- and skipped on repeat runs once cached, so a run only needs live
-Oak access the first time through for each pseudobulk.
+need a working `REF_DIR`.
 
 ```bash
-bash src/data_preprocessing/make_bigwigs.sh
-DATASET=fine bash src/data_preprocessing/make_bigwigs.sh
-DATASET=coarse bash src/data_preprocessing/make_bigwigs.sh
+bash src/data_preprocessing/make_bigwigs.sh | parallel -j 8
+DATASET=fine bash src/data_preprocessing/make_bigwigs.sh | parallel -j 8
+DATASET=coarse bash src/data_preprocessing/make_bigwigs.sh | parallel -j 8
 ```
 
 ### Arabidopsis (A.thaliana)
@@ -84,7 +83,7 @@ bash src/data_preprocessing/cp_peaks.sh
 SPECIES=A.thaliana \
 DATA_DIR=/oak/stanford/groups/akundaje/ayhe/plant-design/data/A.thaliana/fragments \
 FRAGMENTS_SUFFIX=.fragments.tsv.gz \
-bash src/data_preprocessing/make_bigwigs.sh
+bash src/data_preprocessing/make_bigwigs.sh | parallel -j 8
 ```
 
 ## Differential Accessibility

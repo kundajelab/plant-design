@@ -37,10 +37,6 @@ esac
 data_dir="${DATA_DIR:-${default_data_dir}}"
 ref_dir="${REF_DIR:-${default_ref_dir}}"
 out_dir="${OUT_DIR:-${data_root}/bigwigs${dataset_suffix}}"
-# Fragments are always synced into data/<species>/ before bam2bw reads them --
-# never read directly out of DATA_DIR -- so runs are reproducible from the
-# namespaced data/ tree alone and don't require live Oak access on every run.
-fragments_dir="${FRAGMENTS_DIR:-${data_root}/fragments${dataset_suffix}}"
 # Resolved from configs/<species>/species.json (the same manifest
 # species_config.genome_fasta() reads) unless overridden. Must NOT default
 # to Sorghum's filename here -- SPECIES=A.thaliana without this would
@@ -59,7 +55,7 @@ pseudobulks_file="${PSEUDOBULKS_FILE:-${config_dir}/pseudobulks${dataset_suffix}
 # <pseudobulk>.fragments.tsv.gz -- override via FRAGMENTS_SUFFIX.
 fragments_suffix="${FRAGMENTS_SUFFIX:-_fragments.tsv.gz}"
 
-mkdir -p "${out_dir}" "${data_root}" "${fragments_dir}"
+mkdir -p "${out_dir}" "${data_root}"
 
 # Skip the oak rsync entirely if the genome is already in place (e.g. fetched
 # directly from a public archive instead of an oak ref_dir, as for
@@ -79,18 +75,5 @@ while IFS= read -r f || [[ -n "${f}" ]]
 do
     [[ -z "${f}" || "${f}" == \#* ]] && continue
 
-    local_fragments="${fragments_dir}/${f}${fragments_suffix}"
-    if [[ ! -f "${local_fragments}" ]]; then
-        rsync --ignore-existing --progress "${data_dir}/${f}${fragments_suffix}" "${local_fragments}"
-    fi
-
-    echo "time uv run bam2bw ${local_fragments} -ps 4 -ns -4 -u -f -v -s ${chrom_sizes} -n ${out_dir}/${f}"
-    time uv --directory "${REPO_ROOT}" run bam2bw "${local_fragments}" \
-        -ps 4 \
-        -ns -4 \
-        -u \
-        -f \
-        -v \
-        -s "${chrom_sizes}" \
-        -n "${out_dir}/${f}"
+    echo "uv --directory ${REPO_ROOT} run bam2bw ${data_dir}/${f}${fragments_suffix} -ps 4 -ns -4 -u -f -v -s ${chrom_sizes} -n ${out_dir}/${f}"
 done < "${pseudobulks_file}"
