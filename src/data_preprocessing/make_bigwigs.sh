@@ -48,11 +48,12 @@ fi
 while IFS= read -r f || [[ -n "${f}" ]]
 do
     [[ -z "${f}" || "${f}" == \#* ]] && continue
-    echo "time uv run bam2bw ${data_dir}/${f}${fragments_suffix} -ps 4 -ns -4 -u -v -s ${chrom_sizes} -n ${out_dir}/${f}"
+    echo "time uv run bam2bw ${data_dir}/${f}${fragments_suffix} -ps 4 -ns -4 -u -f -v -s ${chrom_sizes} -n ${out_dir}/${f}"
     time uv --directory "${REPO_ROOT}" run bam2bw "${data_dir}/${f}${fragments_suffix}" \
         -ps 4 \
         -ns -4 \
         -u \
+        -f \
         -v \
         -s "${chrom_sizes}" \
         -n "${out_dir}/${f}"
