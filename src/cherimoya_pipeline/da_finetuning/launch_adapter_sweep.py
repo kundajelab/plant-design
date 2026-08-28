@@ -92,7 +92,13 @@ def build_jobs(args, species, sweep):
             sys.exit(1)
     folds = args.fold if args.fold is not None else list(range(N_FOLDS))
 
-    script = REPO_ROOT / "src" / "cherimoya_pipeline" / "da_finetuning" / "finetune_adapters.py"
+    script = (
+        REPO_ROOT
+        / "src"
+        / "cherimoya_pipeline"
+        / "da_finetuning"
+        / "finetune_adapters.py"
+    )
     keys = [
         "targets",
         "conv_rank",
@@ -305,7 +311,10 @@ def main():
             result = subprocess.run(full_cmd, cwd=REPO_ROOT)
             if result.returncode != 0:
                 local_failures.append((job_name, result.returncode))
-                print(f"ERROR: {job_name} exited with {result.returncode}", file=sys.stderr)
+                print(
+                    f"ERROR: {job_name} exited with {result.returncode}",
+                    file=sys.stderr,
+                )
             submitted += 1
             continue
 
@@ -346,7 +355,9 @@ def main():
             print(f"{job_name}: {result.stdout.strip()}")
             submitted += 1
         else:
-            print(f"ERROR submitting {job_name}: {result.stderr.strip()}", file=sys.stderr)
+            print(
+                f"ERROR submitting {job_name}: {result.stderr.strip()}", file=sys.stderr
+            )
 
     if args.local:
         action = "Would run" if args.dry_run else "Ran"

@@ -97,7 +97,9 @@ def common_training_args(args):
 
 
 def build_full_job(args, species, pseudobulk, fold, da_fraction):
-    script = REPO_ROOT / "src" / "cherimoya_pipeline" / "da_finetuning" / "finetune_da.py"
+    script = (
+        REPO_ROOT / "src" / "cherimoya_pipeline" / "da_finetuning" / "finetune_da.py"
+    )
     command = [
         "python",
         str(script),
@@ -132,7 +134,9 @@ def build_full_job(args, species, pseudobulk, fold, da_fraction):
 
 
 def build_adapter_job(args, species, pseudobulk, fold, da_fraction):
-    script = REPO_ROOT / "src" / "cherimoya_pipeline" / "da_finetuning" / "finetune_da.py"
+    script = (
+        REPO_ROOT / "src" / "cherimoya_pipeline" / "da_finetuning" / "finetune_da.py"
+    )
     run_id = default_adapter_run_id(da_fraction)
     command = [
         "python",
@@ -176,7 +180,9 @@ def build_jobs(args, species):
     """
     pseudobulks = load_pseudobulks(species, args.dataset, args.pseudobulk)
     folds = args.fold if args.fold is not None else list(range(N_FOLDS))
-    da_fractions = args.da_fraction if args.da_fraction is not None else list(DA_FRACTIONS)
+    da_fractions = (
+        args.da_fraction if args.da_fraction is not None else list(DA_FRACTIONS)
+    )
 
     builders = {
         "full": build_full_job,
@@ -189,7 +195,9 @@ def build_jobs(args, species):
             for run_group in args.run:
                 for da_fraction in da_fractions:
                     entries.append(
-                        builders[run_group](args, species, pseudobulk, fold, da_fraction)
+                        builders[run_group](
+                            args, species, pseudobulk, fold, da_fraction
+                        )
                     )
         jobs[pseudobulk] = entries
     return jobs
@@ -316,7 +324,7 @@ def main():
     parser.add_argument(
         "--time",
         type=str,
-        default="4-00:00:00",
+        default="2-00:00:00",
         help="time budget for the whole job, regardless of how many steps it runs",
     )
     args = parser.parse_args()
@@ -399,7 +407,9 @@ def main():
                 result = subprocess.run(full_cmd, cwd=REPO_ROOT)
                 if result.returncode != 0:
                     local_failures.append((job_name, label, result.returncode))
-                    print(f"ERROR: step exited with {result.returncode}", file=sys.stderr)
+                    print(
+                        f"ERROR: step exited with {result.returncode}", file=sys.stderr
+                    )
             submitted += 1
             continue
 
@@ -469,7 +479,9 @@ def main():
             print(f"{job_name}: {result.stdout.strip()}")
             submitted += 1
         else:
-            print(f"ERROR submitting {job_name}: {result.stderr.strip()}", file=sys.stderr)
+            print(
+                f"ERROR submitting {job_name}: {result.stderr.strip()}", file=sys.stderr
+            )
 
     if args.local:
         action = "Would run" if args.dry_run else "Ran"

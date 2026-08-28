@@ -9,7 +9,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from finetune_da import DATASETS, main as finetune_da_main
+from finetune_da import DATASETS
+from finetune_da import main as finetune_da_main
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))

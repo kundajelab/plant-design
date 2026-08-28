@@ -38,7 +38,7 @@ import torch
 from cherimoya import Cherimoya
 from cherimoya.losses import _mixture_loss
 from cherimoya.performance import calculate_performance_measures
-from daicon import (  # noqa: E402
+from daicon import (
     Cherimoya_PRESETS,
     Cherimoya_TARGETS,
     adapter_parameters,
@@ -68,6 +68,7 @@ OUT_WINDOW = 1000
 DEFAULT_ADAPTER_TARGETS = "all_postblock"
 extract_loci = None
 predict = None
+
 
 def dataset_suffix(dataset):
     return "" if dataset == "base" else f"_{dataset}"
@@ -267,7 +268,9 @@ def peaks_to_narrowpeak(df, tmp_file):
     np_df.to_csv(tmp_file, sep="\t", header=False, index=False)
 
 
-def extract_split(fasta, loci_df, bw_path, chroms, jitter, verbose, exclusion_lists=None):
+def extract_split(
+    fasta, loci_df, bw_path, chroms, jitter, verbose, exclusion_lists=None
+):
     """Extract sequences and signal for loci on the given chromosomes.
 
     Parameters
@@ -425,9 +428,7 @@ def train_finetune_model(
                 measures=["count_pearson"],
                 signal_groups=model.signal_groups,
             )
-            valid_count_corr = (
-                torch.nan_to_num(measures["count_pearson"]).mean().item()
-            )
+            valid_count_corr = torch.nan_to_num(measures["count_pearson"]).mean().item()
         val_time = time.time() - t0
 
         saved = valid_count_corr > best_corr
@@ -834,7 +835,9 @@ def main(argv=None):
     # --- Load nonpeaks ---
     # negatives.py samples these genome-wide (not per fold); extract_split's
     # chroms= filter below restricts them to train_chroms, same as peaks.
-    nonpeak_path = data_subdir(species, "negatives", args.dataset) / f"{ps}_negatives.bed"
+    nonpeak_path = (
+        data_subdir(species, "negatives", args.dataset) / f"{ps}_negatives.bed"
+    )
     if not nonpeak_path.exists():
         print(f"Error: negatives not found: {nonpeak_path}", file=sys.stderr)
         sys.exit(1)
@@ -976,9 +979,7 @@ def main(argv=None):
             verbose=args.verbose,
         )
         if args.materialize_model:
-            materialized_dir = (
-                root / ps / "adapter_models" / args.adapter_run_id
-            )
+            materialized_dir = root / ps / "adapter_models" / args.adapter_run_id
             materialized_dir.mkdir(parents=True, exist_ok=True)
             model.save(materialized_dir / f"{ps}_f{fold}.torch")
         print(f"\nAdapter bundle saved to {adapter_path}")

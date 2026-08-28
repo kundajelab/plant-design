@@ -132,7 +132,7 @@ def parse_args():
     parser.add_argument(
         "--time",
         type=str,
-        default="24:00:00",
+        default="48:00:00",
         help="time budget for the whole job, regardless of how many folds it trains",
     )
     return parser.parse_args()
