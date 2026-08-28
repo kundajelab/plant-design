@@ -257,7 +257,7 @@ def build_jobs(args, species):
     """Return {variant_name: [step, ...]} -- every step for that variant,
     all bundled into one job.
     """
-    variant_names = args.variant or (["base"] if args.dataset != "base" else list(VARIANTS))
+    variant_names = args.variant or list(VARIANTS)
     return {name: build_variant_entries(args, species, VARIANTS[name]) for name in variant_names}
 
 
