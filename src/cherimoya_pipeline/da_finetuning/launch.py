@@ -23,12 +23,12 @@ foreground with inherited stdout/stderr, instead of submitting SLURM jobs.
 Combined with --dry-run, --local prints one runnable command per step
 instead of running them.
 
---print-commands prints every step's bare python command to stdout, with no
-apptainer wrapper (unlike --local --dry-run), no SLURM submission, no job
-bundling, and no skipping of already-finished steps, and exits -- for
-hand-picking commands to run inside a shell you've already entered the
-Apptainer image from (e.g. `apptainer shell --nv ...`) on an interactive
-allocation.
+--print-commands prints every step's command to stdout prefixed with `uv
+run` (no apptainer wrapper, unlike --local --dry-run), no SLURM submission,
+no job bundling, and no skipping of already-finished steps, and exits --
+for hand-picking commands to run directly on a cluster where `plant-design`
+has been `uv sync --extra cherimoya`'d (e.g. an Oak GPU node), or inside a
+shell you've already entered the Apptainer image from.
 """
 
 import argparse
@@ -284,12 +284,13 @@ def main():
         "--print-commands",
         action="store_true",
         help=(
-            "print every step's bare python command to stdout (no apptainer "
-            "wrapper, unlike --local --dry-run) and exit -- does not skip "
-            "steps whose training log already exists, so you get the full "
-            "list to hand-pick from inside an already-entered Apptainer "
-            "shell on an interactive allocation (no SLURM submission, no "
-            "job bundling)"
+            "print every step's command to stdout prefixed with `uv run` "
+            "(no apptainer wrapper, unlike --local --dry-run) and exit -- "
+            "does not skip steps whose training log already exists, so you "
+            "get the full list to hand-pick from on a cluster with the "
+            "cherimoya extra installed (`uv sync --extra cherimoya`), or "
+            "inside an already-entered Apptainer shell (no SLURM "
+            "submission, no job bundling)"
         ),
     )
     parser.add_argument(
@@ -366,7 +367,7 @@ def main():
     if args.print_commands:
         for entries in jobs.values():
             for entry in entries:
-                print(shlex.join(entry["command"]))
+                print(shlex.join(["uv", "run", *entry["command"]]))
         return
 
     log_dir = species_config.logs_dir(species) / "cherimoya_da_finetuning"
