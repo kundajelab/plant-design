@@ -23,9 +23,12 @@ foreground with inherited stdout/stderr, instead of submitting SLURM jobs.
 Combined with --dry-run, --local prints one runnable command per step
 instead of running them.
 
---print-commands prints every step's apptainer command to stdout (no SLURM
-submission, no job bundling, no skipping of already-finished steps) and
-exits -- for hand-picking commands to run on an interactive allocation.
+--print-commands prints every step's bare python command to stdout, with no
+apptainer wrapper (unlike --local --dry-run), no SLURM submission, no job
+bundling, and no skipping of already-finished steps, and exits -- for
+hand-picking commands to run inside a shell you've already entered the
+Apptainer image from (e.g. `apptainer shell --nv ...`) on an interactive
+allocation.
 """
 
 import argparse
@@ -281,11 +284,12 @@ def main():
         "--print-commands",
         action="store_true",
         help=(
-            "print every step's apptainer command to stdout and exit -- "
-            "unlike --local --dry-run, this does not skip steps whose "
-            "training log already exists, so you get the full list to "
-            "hand-pick from for running on an interactive allocation "
-            "(no SLURM submission, no job bundling)"
+            "print every step's bare python command to stdout (no apptainer "
+            "wrapper, unlike --local --dry-run) and exit -- does not skip "
+            "steps whose training log already exists, so you get the full "
+            "list to hand-pick from inside an already-entered Apptainer "
+            "shell on an interactive allocation (no SLURM submission, no "
+            "job bundling)"
         ),
     )
     parser.add_argument(
@@ -331,6 +335,12 @@ def main():
 
     if args.run is None:
         args.run = list(RUN_GROUPS)
+    # Only tag the job name/log files with the selected run group(s) when
+    # --run narrows the default -- otherwise two separately-submitted
+    # --run-restricted invocations for the same pseudobulk (e.g. --run full
+    # and --run adapter run separately) would collide on both the SLURM job
+    # name and the --output/--error log paths below.
+    run_tag = "" if set(args.run) == set(RUN_GROUPS) else "_" + "-".join(sorted(args.run))
     species = species_config.resolve_species(args.species)
     choices = load_pseudobulks(species, args.dataset, None)
     selected = args.pseudobulk or choices
@@ -356,15 +366,7 @@ def main():
     if args.print_commands:
         for entries in jobs.values():
             for entry in entries:
-                full_cmd = [
-                    "apptainer",
-                    "exec",
-                    "--nv",
-                    *[part for path in apptainer_binds for part in ("--bind", path)],
-                    args.apptainer_image,
-                    *entry["command"],
-                ]
-                print(shlex.join(full_cmd))
+                print(shlex.join(entry["command"]))
         return
 
     log_dir = species_config.logs_dir(species) / "cherimoya_da_finetuning"
@@ -385,7 +387,7 @@ def main():
             skipped_empty += 1
             continue
 
-        job_name = f"da_ft_{args.dataset}_{pseudobulk}".replace(".", "p")
+        job_name = f"da_ft_{species}_{args.dataset}_{pseudobulk}{run_tag}".replace(".", "p")
 
         if args.local:
             for entry in entries:
