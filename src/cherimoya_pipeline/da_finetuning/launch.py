@@ -23,12 +23,12 @@ foreground with inherited stdout/stderr, instead of submitting SLURM jobs.
 Combined with --dry-run, --local prints one runnable command per step
 instead of running them.
 
---print-commands prints every step's command to stdout prefixed with `uv
-run` (no apptainer wrapper, unlike --local --dry-run), no SLURM submission,
-no job bundling, and no skipping of already-finished steps, and exits --
-for hand-picking commands to run directly on a cluster where `plant-design`
-has been `uv sync --extra cherimoya`'d (e.g. an Oak GPU node), or inside a
-shell you've already entered the Apptainer image from.
+--print-commands prints every not-yet-finished step's command to stdout
+prefixed with `uv run` (no apptainer wrapper, unlike --local --dry-run, and
+no SLURM submission or job bundling) and exits -- for hand-picking commands
+to run directly on a cluster where `plant-design` has been `uv sync --extra
+cherimoya`'d (e.g. an Oak GPU node), or inside a shell you've already
+entered the Apptainer image from.
 """
 
 import argparse
@@ -284,13 +284,13 @@ def main():
         "--print-commands",
         action="store_true",
         help=(
-            "print every step's command to stdout prefixed with `uv run` "
-            "(no apptainer wrapper, unlike --local --dry-run) and exit -- "
-            "does not skip steps whose training log already exists, so you "
-            "get the full list to hand-pick from on a cluster with the "
-            "cherimoya extra installed (`uv sync --extra cherimoya`), or "
-            "inside an already-entered Apptainer shell (no SLURM "
-            "submission, no job bundling)"
+            "print every not-yet-finished step's command to stdout "
+            "prefixed with `uv run` (no apptainer wrapper, unlike --local "
+            "--dry-run) and exit -- for hand-picking from on a cluster "
+            "with the cherimoya extra installed (`uv sync --extra "
+            "cherimoya`), or inside an already-entered Apptainer shell "
+            "(no SLURM submission, no job bundling); combine with "
+            "--rerun-finished to print every step regardless"
         ),
     )
     parser.add_argument(
@@ -360,6 +360,11 @@ def main():
         print_finished_report(jobs)
         return
 
+    if args.rerun_finished:
+        for entries in jobs.values():
+            for entry in entries:
+                entry["finish_path"].unlink(missing_ok=True)
+
     apptainer_binds = args.apptainer_bind or [str(REPO_ROOT)]
     apptainer_bind_args = " ".join(f"--bind {shlex.quote(p)}" for p in apptainer_binds)
     apptainer_image_arg = shlex.quote(args.apptainer_image)
@@ -367,6 +372,8 @@ def main():
     if args.print_commands:
         for entries in jobs.values():
             for entry in entries:
+                if entry["finish_path"].exists():
+                    continue
                 print(shlex.join(["uv", "run", *entry["command"]]))
         return
 
@@ -379,10 +386,6 @@ def main():
     local_failures = []
 
     for pseudobulk, entries in jobs.items():
-        if args.rerun_finished:
-            for entry in entries:
-                entry["finish_path"].unlink(missing_ok=True)
-
         skipped_steps += sum(entry["finish_path"].exists() for entry in entries)
         if all(entry["finish_path"].exists() for entry in entries):
             skipped_empty += 1
