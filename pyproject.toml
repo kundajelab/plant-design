@@ -1,0 +1,110 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plant-design"
+version = "0.1.0"
+description = "Local Python environment for plant regulatory sequence modeling workflows"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "bam2bw",
+    "bpnet-lite",
+    "daicon",
+    "huggingface-hub",
+    "joblib",
+    "ledidi",
+    "leidenalg==0.10.2",
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "pillow",
+    # 0.2.5's `values()` only supports summary={mean,min,max}; tangermeme's
+    # GC-matched negative sampling (extract_matching_loci -> _extract_counts)
+    # calls it with summary="sum", which raises ValueError there, gets
+    # silently swallowed into NaN for every locus, and empties out the
+    # matched-loci result. summary="sum" was added in 0.3.0 -- but every
+    # pybigtools release through 0.3.0 only ships manylinux_2_28 wheels (no
+    # older-glibc wheel at any version), so on Sherlock's older glibc both
+    # versions fall back to a source build regardless; 0.3.0's build
+    # specifically fails there (same class of issue as the sibling
+    # procap-atlas project's identical pin, and as the cherimoya/sherlock
+    # torch split above), while 0.2.5's still succeeds. Pinned back to
+    # 0.2.5 here since it no longer needs to satisfy the summary="sum" fix:
+    # negative sampling (`cherimoya negatives`, via fit/negatives.py) always
+    # runs inside the Apptainer image now (src/cherimoya_pipeline/apptainer/
+    # cherimoya.def), which pip-installs its own unpinned (implicitly
+    # >=0.3.0) pybigtools independently of this base env.
+    "pybigtools==0.2.5",
+    "pyfaidx",
+    "pyyaml",
+    "scikit-learn",
+    "scipy",
+    "seaborn",
+    "tangermeme>=1.4.0",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+hub = ["huggingface-hub"]
+# torch is not a base dependency: torch>2.6.0 cannot install on Sherlock at
+# all, while Cherimoya needs its real torch>=2.9.0/triton>=3.5.1. These
+# can't be satisfied by one resolution, so each lives in its own extra
+# below (mirroring the sibling procap-atlas project), declared mutually
+# exclusive via tool.uv.conflicts so uv resolves them independently instead
+# of unifying bpnet-lite/daicon/tangermeme/ledidi's own unconstrained
+# "torch" dependency with whichever extra's constraint into one version.
+#
+# cherimoya>=0.2.0 requires torch>=2.9 and triton>=3.5.1; triton has no
+# macOS wheels at all (Linux/CUDA-only compiler toolchain), so this extra
+# is Linux-only. Its torch>=2.9 also needs newer CUDA than Sherlock's
+# driver supports -- install this extra on a GPU machine whose driver
+# actually supports it (e.g. the akundaje Oak GPU nodes):
+# `uv sync --frozen --extra cherimoya`. Apptainer bypasses this extra
+# entirely on Sherlock (src/cherimoya_pipeline/apptainer/).
+cherimoya = [
+    "cherimoya>=0.2.0; sys_platform == 'linux'",
+    "torch>=2.9.0; sys_platform == 'linux'",
+]
+# The torch every other platform/use case gets: capped at 2.6.0 on Linux
+# (the newest release Sherlock's pip/uv can actually install), unconstrained
+# elsewhere. `uv sync --frozen --extra sherlock` on Sherlock; every
+# cherimoya_pipeline launcher script works fine with neither extra
+# installed at all (they only resolve paths and print/submit jobs -- no
+# torch import needed), so this extra is only for anything that actually
+# wants to run bpnet-lite/daicon/tangermeme for real on Sherlock, outside
+# the Apptainer image.
+sherlock = [
+    "torch<=2.6.0; sys_platform == 'linux'",
+    "torch; sys_platform != 'linux'",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+notebook = [
+    "ipykernel",
+    "jupyterlab",
+    # pyzmq 27.1 has no manylinux2014 x86_64 wheel and builds against
+    # Sherlock's system libraries. 26.4 provides a compatible CPython 3.12 wheel.
+    "pyzmq==26.4.0",
+]
+
+[tool.uv]
+exclude-dependencies = ["macs3"]
+required-environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
+# sherlock's torch<=2.6.0 pin and cherimoya's real torch>=2.9.0 requirement
+# are never installed together, so let uv resolve them independently
+# instead of forcing one universal torch version across both.
+conflicts = [[{ extra = "sherlock" }, { extra = "cherimoya" }]]
+
+[tool.setuptools]
+# This project uses pyproject.toml as a local environment definition. The
+# workflow scripts are run from the repository checkout, not installed as
+# importable top-level packages such as bpnet, cherimoya, or preprocess.
+packages = []
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

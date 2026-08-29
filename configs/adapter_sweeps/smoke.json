@@ -10,6 +10,5 @@
     "epochs": 1,
     "patience": 1,
     "batch_size": 64,
-    "jitter": 200,
-    "loss_alpha": 100
+    "max_jitter": 500
 }

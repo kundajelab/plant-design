@@ -17,9 +17,9 @@ DA_DIR = REPO_ROOT / "data" / "peaks" / "differential_accessibility"
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
 
 
-def pairwise_higher_mask(da, pseudobulk, threshold):
+def pairwise_higher_mask(da, pseudobulk, threshold, pseudobulks=PSEUDOBULKS):
     mask = pd.Series(False, index=da.index)
-    for other in PSEUDOBULKS:
+    for other in pseudobulks:
         if other == pseudobulk:
             continue
 
@@ -45,7 +45,9 @@ def tau_specific_mask(da, pseudobulk, threshold):
     return (da["tau"] >= threshold) & (da["specific_to"] == pseudobulk)
 
 
-def write_da_set_beds(da_path, out_dir, log2fc_threshold, tau_threshold):
+def write_da_set_beds(
+    da_path, out_dir, log2fc_threshold, tau_threshold, pseudobulks=PSEUDOBULKS
+):
     da = pd.read_csv(da_path)
     required = {"chrom", "start", "end"}
     missing = required - set(da.columns)
@@ -54,8 +56,10 @@ def write_da_set_beds(da_path, out_dir, log2fc_threshold, tau_threshold):
 
     out_dir.mkdir(parents=True, exist_ok=True)
     counts = {}
-    for pseudobulk in PSEUDOBULKS:
-        pairwise_mask = pairwise_higher_mask(da, pseudobulk, log2fc_threshold)
+    for pseudobulk in pseudobulks:
+        pairwise_mask = pairwise_higher_mask(
+            da, pseudobulk, log2fc_threshold, pseudobulks
+        )
         tau_mask = tau_specific_mask(da, pseudobulk, tau_threshold)
         union_mask = pairwise_mask | tau_mask
 
@@ -82,7 +86,7 @@ def write_da_set_beds(da_path, out_dir, log2fc_threshold, tau_threshold):
     return counts
 
 
-def write_pairwise_higher_beds(da_path, out_dir, threshold):
+def write_pairwise_higher_beds(da_path, out_dir, threshold, pseudobulks=PSEUDOBULKS):
     da = pd.read_csv(da_path)
     required = {"chrom", "start", "end"}
     missing = required - set(da.columns)
@@ -91,8 +95,8 @@ def write_pairwise_higher_beds(da_path, out_dir, threshold):
 
     out_dir.mkdir(parents=True, exist_ok=True)
     counts = {}
-    for pseudobulk in PSEUDOBULKS:
-        mask = pairwise_higher_mask(da, pseudobulk, threshold)
+    for pseudobulk in pseudobulks:
+        mask = pairwise_higher_mask(da, pseudobulk, threshold, pseudobulks)
         out_path = out_dir / f"da_peaks_pairwise_higher_{pseudobulk}.bed"
         da.loc[mask, ["chrom", "start", "end"]].assign(name=pseudobulk).to_csv(
             out_path, sep="\t", header=False, index=False
@@ -110,7 +114,7 @@ def main():
         "--da-peaks-csv",
         type=Path,
         default=DA_DIR / "da_peaks.csv",
-        help="Path to da_peaks.csv (default: data/peaks/differential_accessibility/da_peaks.csv)",
+        help="Path to da_peaks.csv.",
     )
     parser.add_argument(
         "--out-dir",
@@ -130,6 +134,12 @@ def main():
         default=0.75,
         help="Minimum tau for tau-specific union inclusion (default: 0.75)",
     )
+    parser.add_argument(
+        "--pseudobulks",
+        type=Path,
+        default=None,
+        help="Text file of pseudobulks to use. Defaults to the base pseudobulk list.",
+    )
     args = parser.parse_args()
 
     if not args.da_peaks_csv.exists():
@@ -137,18 +147,22 @@ def main():
         print("Run differential_accessibility.py first.", file=sys.stderr)
         sys.exit(1)
 
+    pseudobulks = PSEUDOBULKS
+    if args.pseudobulks is not None:
+        pseudobulks = [
+            line.strip()
+            for line in args.pseudobulks.read_text().splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
+
     write_da_set_beds(
-        args.da_peaks_csv, args.out_dir, args.log2fc_threshold, args.tau_threshold
+        args.da_peaks_csv,
+        args.out_dir,
+        args.log2fc_threshold,
+        args.tau_threshold,
+        pseudobulks,
     )
 
 
 if __name__ == "__main__":
     main()
-
-
-# /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_pairwise_higher_bundle_sheath.bed: 1999 peaks; /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_specific_union_bundle_sheath.bed: 2003 peaks (118 tau-specific, 114 overlap)
-# /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_pairwise_higher_epidermis.bed: 1791 peaks; /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_specific_union_epidermis.bed: 1797 peaks (94 tau-specific, 88 overlap)
-# /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_pairwise_higher_guard.bed: 3018 peaks; /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_specific_union_guard.bed: 3020 peaks (397 tau-specific, 395 overlap)
-# /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_pairwise_higher_mesophyll.bed: 1255 peaks; /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_specific_union_mesophyll.bed: 1257 peaks (50 tau-specific, 48 overlap)
-# /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_pairwise_higher_phloem.bed: 2354 peaks; /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_specific_union_phloem.bed: 2358 peaks (415 tau-specific, 411 overlap)
-# /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_pairwise_higher_xylem.bed: 926 peaks; /scratch/users/ayhe/plant-design/data/peaks/differential_accessibility/da_peaks_specific_union_xylem.bed: 932 peaks (56 tau-specific, 50 overlap)
