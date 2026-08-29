@@ -13,13 +13,14 @@ Output files (performance_metrics/differential_accessibility/):
   summary.json              — metadata and n_specific_peaks per cell type
 
 Usage:
-    python src/data_preprocessing/differential_accessibility.py
-    python src/data_preprocessing/differential_accessibility.py --tmm
-    python src/data_preprocessing/differential_accessibility.py --log2fc-threshold 1.5
+    uv run python src/data_preprocessing/differential_accessibility.py
+    uv run python src/data_preprocessing/differential_accessibility.py --dataset coarse
+    uv run python src/data_preprocessing/differential_accessibility.py --dataset fine --tmm
 """
 
 import argparse
 import json
+import sys
 import tempfile
 from itertools import combinations
 from pathlib import Path
@@ -30,17 +31,36 @@ from tangermeme.io import extract_loci
 from write_pairwise_higher_beds import write_da_set_beds
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+import species_config
+
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
-FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
+DATASETS = ("base", "fine", "coarse")
 IN_WINDOW = 2114
 OUT_WINDOW = 1000
 
 
-def build_union_peaks(pseudobulks):
+def dataset_suffix(dataset):
+    return "" if dataset == "base" else f"_{dataset}"
+
+
+def peaks_dir(species, dataset):
+    return species_config.data_dir(species) / f"peaks{dataset_suffix(dataset)}"
+
+
+def bigwigs_dir(species, dataset):
+    return species_config.data_dir(species) / f"bigwigs{dataset_suffix(dataset)}"
+
+
+def da_dir(species, dataset):
+    return peaks_dir(species, dataset) / "differential_accessibility"
+
+
+def build_union_peaks(species, pseudobulks, dataset="base"):
     """Merge all per-pseudobulk peak files into a union of non-overlapping intervals."""
     frames = []
     for ps in pseudobulks:
-        path = REPO_ROOT / f"data/peaks/{ps}_peaks.narrowPeak"
+        path = peaks_dir(species, dataset) / f"{ps}_peaks.narrowPeak"
         if not path.exists():
             raise FileNotFoundError(f"Peaks file not found: {path}")
         frames.append(pd.read_csv(path, sep="\t", header=None))
@@ -67,13 +87,13 @@ def build_union_peaks(pseudobulks):
     return pd.DataFrame(rows)
 
 
-def extract_counts(union, pseudobulks, verbose):
+def extract_counts(species, union, pseudobulks, dataset, verbose):
     """Extract summed read counts per peak per pseudobulk from bigwigs.
 
     Returns (counts, mask) where mask is a boolean array over the input union
     indicating which peaks were successfully extracted.
     """
-    bw_paths = [str(REPO_ROOT / f"data/bigwigs/{ps}.bw") for ps in pseudobulks]
+    bw_paths = [str(bigwigs_dir(species, dataset) / f"{ps}.bw") for ps in pseudobulks]
     for path in bw_paths:
         if not Path(path).exists():
             raise FileNotFoundError(f"Bigwig not found: {path}")
@@ -84,7 +104,7 @@ def extract_counts(union, pseudobulks, verbose):
 
     _, y, mask = extract_loci(
         loci=tmp_path,
-        sequences=FASTA,
+        sequences=str(species_config.genome_fasta(species)),
         signals=bw_paths,
         in_window=IN_WINDOW,
         out_window=OUT_WINDOW,
@@ -217,10 +237,17 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
+    species_config.add_species_arg(parser)
     parser.add_argument(
         "--tmm",
         action="store_true",
         help="Use TMM normalization instead of CPM",
+    )
+    parser.add_argument(
+        "--dataset",
+        choices=DATASETS,
+        default="base",
+        help="Dataset namespace to process (default: base).",
     )
     parser.add_argument(
         "--pseudocount",
@@ -243,14 +270,18 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
+    species = species_config.resolve_species(args.species)
     norm_method = "tmm" if args.tmm else "cpm"
+    pseudobulks = species_config.read_pseudobulks(species, args.dataset)
 
     print("Building union of peak regions...")
-    union = build_union_peaks(PSEUDOBULKS)
+    union = build_union_peaks(species, pseudobulks, args.dataset)
     print(f"  {len(union)} merged peaks across all pseudobulks")
 
     print("Extracting read counts from bigwigs...")
-    counts, mask = extract_counts(union, PSEUDOBULKS, verbose=args.verbose)
+    counts, mask = extract_counts(
+        species, union, pseudobulks, args.dataset, verbose=args.verbose
+    )
     n_dropped = (~mask).sum()
     if n_dropped:
         print(f"  Dropped {n_dropped} peaks filtered by extract_loci (scaffolds/boundaries)")
@@ -266,18 +297,18 @@ def main():
     print("Computing specificity metrics...")
     log2fc = compute_log2fc(cpm, args.pseudocount)
     pair_log2fc, max_log2fc, max_contrast = compute_pairwise_log2fc(
-        cpm, PSEUDOBULKS, args.pseudocount
+        cpm, pseudobulks, args.pseudocount
     )
     tau = compute_tau(cpm)
-    specific_to = [PSEUDOBULKS[i] for i in cpm.argmax(axis=1)]
+    specific_to = [pseudobulks[i] for i in cpm.argmax(axis=1)]
 
     # Assemble output DataFrame
     coords = union[[0, 1, 2]].copy()
     coords.columns = ["chrom", "start", "end"]
     coords = coords.reset_index(drop=True)
 
-    cpm_df = pd.DataFrame(cpm, columns=[f"cpm_{ps}" for ps in PSEUDOBULKS])
-    log2fc_df = pd.DataFrame(log2fc, columns=[f"log2fc_{ps}" for ps in PSEUDOBULKS])
+    cpm_df = pd.DataFrame(cpm, columns=[f"cpm_{ps}" for ps in pseudobulks])
+    log2fc_df = pd.DataFrame(log2fc, columns=[f"log2fc_{ps}" for ps in pseudobulks])
     pairwise_df = pd.DataFrame(pair_log2fc)
     meta_df = pd.DataFrame(
         {
@@ -291,7 +322,7 @@ def main():
     da = pd.concat([coords, cpm_df, log2fc_df, pairwise_df, meta_df], axis=1)
 
     # Save outputs
-    out_dir = REPO_ROOT / "data" / "peaks" / "differential_accessibility"
+    out_dir = da_dir(species, args.dataset)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     main_path = out_dir / "da_peaks.csv"
@@ -315,20 +346,24 @@ def main():
     print(
         f"  Pairwise BED file saved to {pairwise_bed_path} ({len(sig)} peaks, |log2FC| >= {args.log2fc_threshold})"
     )
-    write_da_set_beds(main_path, out_dir, args.log2fc_threshold, args.tau_threshold)
+    write_da_set_beds(
+        main_path, out_dir, args.log2fc_threshold, args.tau_threshold, pseudobulks
+    )
 
-    for ps in PSEUDOBULKS:
+    for ps in pseudobulks:
         ranked = da.sort_values(f"log2fc_{ps}", ascending=False)
         ranked_path = out_dir / f"{ps}_ranked.csv"
         ranked.to_csv(ranked_path, index=False)
 
     n_specific = {
         ps: int(((da["specific_to"] == ps) & (da["tau"] >= args.tau_threshold)).sum())
-        for ps in PSEUDOBULKS
+        for ps in pseudobulks
     }
 
     summary = {
         "n_union_peaks": len(da),
+        "dataset": args.dataset,
+        "pseudobulks": pseudobulks,
         "normalization_method": norm_method,
         "pseudocount": args.pseudocount,
         "tau_threshold": args.tau_threshold,
