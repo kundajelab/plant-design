@@ -1,43 +1,29 @@
 # plant-design
 
-Regulatory sequence modeling and enhancer/promoter design in plants. Trains and evaluates [ChromBPNet](https://github.com/kundajelab/chrombpnet) models of chromatin accessibility in *Sorghum bicolor*, using 5-fold cross-validation with chromosome-based splits across 6 pseudobulk cell types (bundle_sheath, epidermis, guard, mesophyll, phloem, xylem).
+Regulatory sequence modeling and enhancer/promoter design in plants. Trains and evaluates [Cherimoya](https://github.com/jmschrei/cherimoya) models of chromatin accessibility, primarily in *Sorghum bicolor*, using 5-fold cross-validation with chromosome-based splits across 6 pseudobulk cell types (bundle_sheath, epidermis, guard, mesophyll, phloem, xylem). Config support is also extended to *Arabidopsis thaliana* and *Oryza sativa* (rice) — see `src/species_config.py`.
+
+Cherimoya trains a single model end-to-end directly on raw signal, with no separate bias-correction stage. The prior [ChromBPNet](https://github.com/kundajelab/chrombpnet)-based pipeline (a two-stage bias model + accessibility model, trained in a separate TensorFlow environment) is preserved as-is on the `chrombpnet` branch.
 
 ## Installation
 
-### Tensorflow environment
-
-Create a conda environment and install all dependencies for ChromBPNet training:
+A single environment now covers the whole pipeline:
 
 ```bash
-mamba create -n chrombpnet python=3.8
-mamba activate chrombpnet
-mamba install -y -c conda-forge -c bioconda samtools bedtools ucsc-bedgraphtobigwig pybigwig meme
-mamba install -c conda-forge -c nvidia "cudnn>=8.9,<9" cudatoolkit
-pip install tensorflow==2.8.0 chrombpnet
+mamba env create -f environment.yml
+mamba activate plant-design
+uv sync --frozen
 ```
 
-Export the following variables before running ChromBPNet training:
+Python dependencies for preprocessing, training, benchmarking, attribution,
+sequence design, and adapter fine-tuning are managed in `pyproject.toml` and
+locked in `uv.lock`. Run entrypoints through `uv run`, for example
+`uv run python src/cherimoya_pipeline/benchmark/benchmark.py -p mesophyll`.
 
-```bash
-export NUMBA_NUM_THREADS=8
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/miniconda3/envs/chrombpnet/lib
-```
-
-Also note that TF installation is a bit of a pain. These things have worked for me, but you may need to mess around with dependencies and install orders to get things to actually work.
-
-### PyTorch environment
-
-All upstream and downstream processing from model training requires a separate PyTorch environment, as TensorFlow 2.8 and modern PyTorch are not compatible in the same environment:
-
-```bash
-mamba create -n torch python=3.14
-mamba activate torch
-pip install bpnet-lite tangermeme tqdm bam2bw ledidi daicon
-```
-
-`daicon` provides the low-rank convolutional/linear adapter implementation used
-for differential accessibility fine-tuning. Source:
-<https://github.com/adamyhe/daicon>.
+`cherimoya` is a **Linux-only** dependency: it requires `torch>=2.9`/
+`triton>=3.5.1`, and `triton` has no macOS wheels at all. Training
+(`src/cherimoya_pipeline/fit/`) only runs on Linux GPU machines; everything
+downstream of a trained model (benchmarking, attribution, DA finetuning) runs
+in the same env on any platform.
 
 ## Pipeline
 
@@ -46,123 +32,171 @@ for differential accessibility fine-tuning. Source:
 Convert ATAC fragment files to per-pseudobulk bigwigs:
 
 ```bash
-bash src/data_preprocessing/make_bigwigs.sh
+bash src/data_preprocessing/make_bigwigs.sh | parallel
+DATASET=fine bash src/data_preprocessing/make_bigwigs.sh | parallel
+DATASET=coarse bash src/data_preprocessing/make_bigwigs.sh | parallel
 ```
 
-Expected data layout under `data/`:
+Expected data layout under `data/<species>/` (default species: `S.bicolor`):
 ```
-data/
+data/S.bicolor/
 ├── Sbicolor_730_v5.0.fa          # Sorghum v5 reference genome
 ├── peaks/<pseudobulk>_peaks.narrowPeak
-└── bigwigs/<pseudobulk>.bw
+├── peaks_fine/<pseudobulk>_peaks.narrowPeak
+├── peaks_coarse/<pseudobulk>_peaks.narrowPeak
+├── bigwigs/<pseudobulk>.bw
+├── bigwigs_fine/<pseudobulk>.bw
+└── bigwigs_coarse/<pseudobulk>.bw
 ```
 
-### 2. Generate non-peak background regions
+Every species (including the default) is namespaced under `data/<species>/`
+(see `src/species_config.py`); pass `--species <species>` to any Python
+entrypoint, or set `$SPECIES` for shell scripts.
+
+The base dataset is the default for training and analysis scripts. Use
+`--dataset fine` or `--dataset coarse` with Python entrypoints such as the
+job launchers, `benchmark.py`, and DeepLIFT/SHAP scripts.
+
+### 2. Generate chromosome fold configs
 
 ```bash
-bash src/chrombpnet/fit/nonpeaks.sh
+python configs/write_folds.py
+python configs/write_folds.py --species A.thaliana
 ```
 
-### 3. Train bias models
+Generates `configs/<species>/fold_0.json` ... `fold_4.json` from
+`configs/<species>/chrom_splits.json` using rolling 5-fold CV logic.
 
-Trains Tn5 insertion bias models for all pseudobulks across all 5 folds:
+### 3. Generate negative regions
+
+Cherimoya samples GC-matched negatives itself via its own `negatives` CLI, one
+BED file per pseudobulk (not per fold — chromosome-split filtering happens at
+train/predict time, not at negative-sampling time):
 
 ```bash
-bash src/chrombpnet/fit/bias.sh
+python src/cherimoya_pipeline/fit/negatives.py
+python src/cherimoya_pipeline/fit/negatives.py --dataset fine
 ```
 
-### 4. Train accessibility (ChromBPNet) models
+### 4. Train Cherimoya models
+
+Trains one model per pseudobulk per fold directly against raw bigwig signal —
+no bias model, no separate accessibility stage:
 
 ```bash
-bash src/chrombpnet/fit/accessibility.sh
+python src/cherimoya_pipeline/fit/launch.py --dataset fine
 ```
 
-### 5. Convert to PyTorch
+`launch.py` submits one SLURM job per pseudobulk (looping over that
+pseudobulk's folds) for any pseudobulk missing a model checkpoint, running
+via `apptainer exec --nv` against the Cherimoya Apptainer image (see
+`src/cherimoya_pipeline/apptainer/`) by default. `--dry-run` prints the
+generated sbatch scripts instead of submitting; `--local` runs in the
+foreground instead — combine with `--dry-run` to print one command per fold
+for `simple_gpu_scheduler`/`parallel` on a GPU box you already have a shell
+on (e.g. an Oak GPU node). `train_cherimoya.py` is the actual training
+entrypoint if you want to run a single pseudobulk/fold directly for
+debugging.
 
-Converts trained TensorFlow `.h5` models to PyTorch `.torch` format:
+Models are saved to `models/<species>/<pseudobulk>/<pseudobulk>_f<fold>.torch`
+(Cherimoya's own config+state_dict checkpoint format, loaded via
+`Cherimoya.load()`).
 
-```bash
-python src/chrombpnet/fit/convert_to_torch.py
-```
-
-### 6. Benchmark
+### 5. Benchmark
 
 Evaluates models on held-out test chromosomes per fold:
 
 ```bash
-python src/chrombpnet/benchmark/benchmark.py -p <pseudobulk> [-o]
-python src/chrombpnet/benchmark/benchmark.py -p <pseudobulk> --adapter --da-fraction 0.8
+uv run python src/cherimoya_pipeline/benchmark/benchmark.py -p <pseudobulk> [-o]
+uv run python src/cherimoya_pipeline/benchmark/benchmark.py -p <pseudobulk> --adapter --da-fraction 0.8
 ```
 
 Options:
 - `-p` / `--pseudobulk`: one of `bundle_sheath`, `epidermis`, `guard`, `mesophyll`, `phloem`, `xylem`
-- `-o` / `--save-output`: save scaled predictions and signals to `predictions/chrombpnet/<pseudobulk>.npz`
+- `-o` / `--save-output`: save scaled predictions and signals to `predictions/<species>/cherimoya/<pseudobulk>.npz`
 - `-b` / `--batch-size`: inference batch size (default: 64)
 - `--adapter`: benchmark the default daicon adapter run for the selected `--da-fraction`
 - `--adapter-sweep-id` / `--adapter-run-id`: benchmark an explicit adapter run ID
 
-Metrics (profile Pearson, Jensen-Shannon distance, log-counts Pearson, counts Spearman) are saved to `performance_metrics/chrombpnet/<pseudobulk>.json`.
+Metrics (profile Pearson, Jensen-Shannon distance, log-counts Pearson, counts Spearman) are saved to `performance_metrics/<species>/cherimoya/<pseudobulk>.json`.
 
-### 7. Differential accessibility
+### 6. Differential accessibility
 
 Build the union peak set, extract observed accessibility counts, and compute DA
 specificity metrics:
 
 ```bash
-python src/data_preprocessing/differential_accessibility.py
+uv run python src/data_preprocessing/differential_accessibility.py
+uv run python src/data_preprocessing/differential_accessibility.py --dataset coarse
+uv run python src/data_preprocessing/differential_accessibility.py --dataset fine
 ```
 
-Outputs are written under `data/peaks/differential_accessibility/` and are
-required for DA benchmarking and adapter fine-tuning.
+Outputs are written under the matching peaks namespace:
+
+```text
+data/<species>/peaks/differential_accessibility/
+data/<species>/peaks_coarse/differential_accessibility/
+data/<species>/peaks_fine/differential_accessibility/
+```
+
+These outputs are required for DA benchmarking and adapter fine-tuning.
 
 Evaluate whether out-of-fold model predictions recover observed cell-type
 specificity:
 
 ```bash
-python src/chrombpnet/benchmark/benchmark_da.py [--save-output]
-python src/chrombpnet/benchmark/benchmark_da.py --adapter --da-fraction 0.8
+uv run python src/cherimoya_pipeline/benchmark/benchmark_da.py [--save-output]
+uv run python src/cherimoya_pipeline/benchmark/benchmark_da.py --dataset coarse [--save-output]
+uv run python src/cherimoya_pipeline/benchmark/benchmark_da.py --dataset fine [--save-output]
+uv run python src/cherimoya_pipeline/benchmark/benchmark_da.py --adapter --da-fraction 0.8
 ```
 
-### 8. Full-model DA fine-tuning
+### 7. Full-model DA fine-tuning
 
-The original DA fine-tuning path updates the full accessibility submodel while
-keeping the bias model frozen:
+The default DA fine-tuning path updates the whole Cherimoya model (there is no
+bias submodel to keep frozen):
 
 ```bash
-python src/chrombpnet/da_finetuning/finetune_da.py -p <pseudobulk> -f <fold> -v
+uv run python src/cherimoya_pipeline/da_finetuning/finetune_da.py -p <pseudobulk> -f <fold> -v
+uv run python src/cherimoya_pipeline/da_finetuning/finetune_da.py \
+    --dataset coarse -p <pseudobulk> -f <fold> -v
 ```
 
-Fine-tuned models are saved under `models/<pseudobulk>/finetuned/`.
+Fine-tuned models are saved under `models/<species>/<pseudobulk>/finetuned/`.
+For `--dataset coarse` or `--dataset fine`, outputs are saved under
+`models/<species>/coarse/<pseudobulk>/...` or `models/<species>/fine/<pseudobulk>/...`.
 Use `--da-fraction 0.8` to save the 80:20 DA replay run under
-`models/<pseudobulk>/finetuned_0.8/`.
+`models/<species>/<pseudobulk>/finetuned_0.8/`.
 
-### 9. Low-rank adapter DA fine-tuning
+### 8. Low-rank adapter DA fine-tuning
 
-Adapter fine-tuning freezes the base ChromBPNet model and trains only small
+Adapter fine-tuning freezes the base Cherimoya model and trains only small
 low-rank residual adapters from `daicon`. Adapter bundles are saved separately
 and are loaded onto the matching base fold model at prediction/attribution time.
-The frozen bias and accessibility base weights are not included in the adapter
-state dict; only adapter branch weights are saved.
+The frozen base weights are not included in the adapter state dict; only
+adapter branch weights are saved.
 
-The main DA fine-tuning entrypoint supports daicon adapter mode. By default it
-uses the daicon BPNet defaults selected from the parameter sweep: all BPNet
-layers, `conv_rank=16`, `linear_rank=4`, dropout `0`, and alpha-8 scaling.
+The main DA fine-tuning entrypoint supports daicon adapter mode. Adapter
+targets use Cherimoya's own layer names (`iconv`, `blocks`, `fconv`, `linear`,
+`heads` — see `daicon.Cherimoya_TARGETS`/`Cherimoya_PRESETS`); the default is
+`all_postblock` (Cherimoya has no single "all" preset the way BPNet does),
+with `conv_rank=16`, `linear_rank=4`, dropout `0`, and alpha-8 scaling.
 
 ```bash
-python src/chrombpnet/da_finetuning/finetune_da.py \
+uv run python src/cherimoya_pipeline/da_finetuning/finetune_da.py \
     -p <pseudobulk> -f <fold> --mode adapter --da-fraction 0.5 -v
 
-python src/chrombpnet/da_finetuning/finetune_da.py \
+uv run python src/cherimoya_pipeline/da_finetuning/finetune_da.py \
     -p <pseudobulk> -f <fold> --mode adapter --da-fraction 0.8 -v
 ```
 
 Artifacts:
 
 ```text
-models/<pseudobulk>/adapters/daicon_default_da0p5/<pseudobulk>_f<fold>.adapter.pt
-models/<pseudobulk>/adapters/daicon_default_da0p5/<pseudobulk>_f<fold>.config.json
-models/<pseudobulk>/adapters/daicon_default_da0p5/<pseudobulk>_f<fold>.log.tsv
-models/<pseudobulk>/adapters/daicon_default_da0p8/<pseudobulk>_f<fold>.adapter.pt
+models/<species>/<pseudobulk>/adapters/daicon_default_da0p5/<pseudobulk>_f<fold>.adapter.pt
+models/<species>/<pseudobulk>/adapters/daicon_default_da0p5/<pseudobulk>_f<fold>.config.json
+models/<species>/<pseudobulk>/adapters/daicon_default_da0p5/<pseudobulk>_f<fold>.log.tsv
+models/<species>/<pseudobulk>/adapters/daicon_default_da0p8/<pseudobulk>_f<fold>.adapter.pt
 ```
 
 The `.adapter.pt` bundle contains a manifest plus adapter-only `state_dict`.
@@ -175,35 +209,35 @@ The legacy `finetune_adapters.py` CLI remains available as a compatibility
 wrapper around `finetune_da.py --mode adapter`.
 
 Use the standard launcher to submit full-model DA fine-tuning plus daicon
-adapter runs. It submits one SLURM job per run group, pseudobulk, and fold,
-with both 0.5 and 0.8 DA fractions by default. Adapter fine-tuning uses
-`--adapter-lr 0.001` by default:
+adapter jobs, with both 0.5 and 0.8 DA fractions by default -- one SLURM job
+per (run group, pseudobulk, fold), running via `apptainer exec --nv`
+against the Cherimoya Apptainer image (`--dry-run`/`--local` supported, same
+as the other launchers):
 
 ```bash
-python src/chrombpnet/da_finetuning/launch.py --dry-run
+uv run python src/cherimoya_pipeline/da_finetuning/launch.py \
+    --run full \
+    --run adapter
 
-python src/chrombpnet/da_finetuning/launch.py \
+uv run python src/cherimoya_pipeline/da_finetuning/launch.py \
+    --dataset coarse \
     --run full \
     --run adapter
 ```
 
-Use the sweep launcher for the broad adapter hyperparameter grid. It submits one
-SLURM job per pseudobulk/fold and uses the final `.log.tsv` as the completion
-marker:
+Use the sweep launcher for the broad adapter hyperparameter grid. It prints
+one command per pseudobulk/fold/hyperparameter combination and uses the
+final `.log.tsv` as the completion marker:
 
 ```bash
-python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
-    --config configs/adapter_sweeps/smoke.json \
-    --dry-run
-
-python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
+uv run python src/cherimoya_pipeline/da_finetuning/launch_adapter_sweep.py \
     --config configs/adapter_sweeps/smoke.json
 ```
 
 Check finished adapter jobs:
 
 ```bash
-python src/chrombpnet/da_finetuning/launch_adapter_sweep.py \
+uv run python src/cherimoya_pipeline/da_finetuning/launch_adapter_sweep.py \
     --config configs/adapter_sweeps/smoke.json \
     --check-finished
 ```
@@ -212,110 +246,26 @@ Benchmark the active model set (base, both full-finetuned models, and both
 default daicon adapter models):
 
 ```bash
-python src/chrombpnet/benchmark/launch.py --dry-run
-python src/chrombpnet/benchmark/launch.py
+uv run python src/cherimoya_pipeline/benchmark/launch.py
 ```
 
 Summarize and plot the active model benchmark outputs:
 
 ```bash
-python src/chrombpnet/benchmark/plot_benchmark.py
+uv run python src/cherimoya_pipeline/benchmark/plot_benchmark.py
 ```
 
-The LoRA sweep benchmark and selection scripts are development-only utilities
-for choosing adapter hyperparameters:
+> The LoRA sweep benchmark/plotting scripts (`benchmark_lora_sweep.py`,
+> `plot_lora_sweep.py`, `select_best_lora_model.py`, `plot_celltype_scatter.py`,
+> `pairwise_correlations.py`) are development-only utilities that still assume
+> ChromBPNet's checkpoint format and directory labels; they haven't been
+> migrated to Cherimoya yet.
 
-```bash
-python src/chrombpnet/benchmark/benchmark_lora_sweep.py --sweep-id <sweep_id>
-python src/chrombpnet/benchmark/plot_lora_sweep.py --sweep-id <sweep_id>
-python src/chrombpnet/benchmark/select_best_lora_model.py \
-    --summary performance_metrics/plots/lora_sweep/lora_sweep_summary.csv
-```
+### 9. Attribution
 
-### 10. Attribution
+Attribution and tf-MoDISco have directory-local runbooks:
 
-First, filter peaks to remove any containing non-ACGT characters, then save one-hot-encoded sequences (run from `src/chrombpnet/attribute/`):
-
-```bash
-for pseudobulk in "bundle_sheath" "epidermis" "guard" "mesophyll" "phloem" "xylem"; do
-    python filter_nonACGT_regions.py -v \
-        -f ../../../data/Sbicolor_730_v5.0.fa \
-        -b ../../../data/peaks/${pseudobulk}_peaks.narrowPeak \
-        -o ../../../data/peaks/${pseudobulk}_peaks_ACGT.narrowPeak
-done
-
-for pseudobulk in "bundle_sheath" "epidermis" "guard" "mesophyll" "phloem" "xylem"; do
-    python save_ohe.py -v -p ${pseudobulk}
-done
-```
-
-Then compute DeepLIFT/SHAP hypothetical attributions on a SLURM cluster:
-
-```bash
-python src/chrombpnet/attribute/launch.py --model accessibility
-```
-
-`launch.py` submits one SLURM job per pseudobulk, model type, and head.
-Attributions are saved under `attributions/chrombpnet/`, and one-hot-encoded
-sequences to `attributions/chrombpnet/`.
-
-Default daicon adapter attribution is supported through the attribution launcher:
-
-```bash
-python src/chrombpnet/attribute/launch.py \
-    --model accessibility \
-    --adapter \
-    --da-fraction 0.5
-
-python src/chrombpnet/attribute/launch.py \
-    --model accessibility \
-    --adapter \
-    --da-fraction 0.8
-```
-
-Custom adapter sweep/run attribution is supported by passing the trained adapter
-run ID through the attribution launcher or DeepLIFT script:
-
-```bash
-python src/chrombpnet/attribute/deepliftshap.py \
-    -p <pseudobulk> \
-    -m accessibility \
-    --head profile \
-    --adapter-run-id <adapter_id>
-```
-
-`daicon` adapters are compatible with tangermeme DeepLIFT/SHAP in evaluation
-mode because the adapter branches are affine residual additions over frozen
-`Conv1d`/`Linear` layers. Dropout may be used during training but is disabled
-with `model.eval()` during attribution.
-
-Run tf-modisco on attribution outputs and generate reports:
-
-```bash
-python src/chrombpnet/modisco/launch.py --model accessibility
-python src/chrombpnet/modisco/launch_report.py --model accessibility
-```
-
-Default daicon adapter tf-modisco runs use the same adapter selectors:
-
-```bash
-python src/chrombpnet/modisco/launch.py \
-    --model accessibility \
-    --adapter \
-    --da-fraction 0.5
-
-python src/chrombpnet/modisco/launch.py \
-    --model accessibility \
-    --adapter \
-    --da-fraction 0.8
-
-python src/chrombpnet/modisco/launch_report.py \
-    --model accessibility \
-    --adapter \
-    --da-fraction 0.5
-
-python src/chrombpnet/modisco/launch_report.py \
-    --model accessibility \
-    --adapter \
-    --da-fraction 0.8
-```
+- `src/cherimoya_pipeline/attribute/README.md`: peak filtering, OHE extraction, and
+  DeepLIFT/SHAP launch commands for base/fine/coarse and DA-specific runs.
+- `src/cherimoya_pipeline/modisco/README.md`: motif discovery and report launch
+  commands for base, finetuned, adapter, and DA-specific attribution outputs.
