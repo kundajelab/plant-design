@@ -1,6 +1,37 @@
-"""Shared model-variant CLI helpers for benchmark scripts."""
+"""Shared model-variant CLI helpers for benchmark scripts.
+
+add_model_variant_args()/resolve_model_variant() are pure argparse/string
+logic used by the SLURM launchers (attribute/launch.py, modisco/launch*.py)
+as well as the actual compute scripts -- cherimoya/daicon are only imported
+inside load_cherimoya_with_adapter() (not at module scope) so a launcher can
+resolve which model variant to use, and print/submit its job, without
+either package (or their torch>=2.9 requirement) installed. Sherlock's base
+`plant-design` env doesn't carry cherimoya -- see the `cherimoya` extra in
+pyproject.toml -- so this matters for anything invoking these launchers
+there.
+"""
 
 import sys
+
+
+def load_cherimoya_with_adapter(model_path, adapter_path=None, device="cpu"):
+    """Load a Cherimoya checkpoint, optionally injecting a daicon adapter.
+
+    Cherimoya checkpoints are a config + state_dict bundle (loaded via
+    Cherimoya.load), not a pickled nn.Module like ChromBPNet's -- so this
+    does not go through daicon.load_model_with_adapter, which assumes the
+    latter. Adapters are applied at the model root: Cherimoya has no
+    bias/accessibility submodel split to target.
+    """
+    from cherimoya import Cherimoya
+    from daicon import load_adapter_bundle
+
+    model = Cherimoya.load(model_path, device=device, compile=False)
+    if adapter_path is None:
+        return model, None
+    return load_adapter_bundle(
+        model, adapter_path, map_location=device, adapter_root=None
+    )
 
 
 def finetuned_tag(da_fraction):
@@ -8,7 +39,7 @@ def finetuned_tag(da_fraction):
 
 
 def finetuned_metrics_subdir(da_fraction):
-    return f"chrombpnet_{finetuned_tag(da_fraction)}"
+    return f"cherimoya_{finetuned_tag(da_fraction)}"
 
 
 def daicon_adapter_id(da_fraction):
@@ -59,7 +90,9 @@ def resolve_model_variant(args):
     elif args.adapter_sweep_id is not None:
         adapter_id = args.adapter_sweep_id
 
-    model_subdir = fine_tag if args.finetuned else "torch"
+    # Base (non-finetuned) checkpoints are written directly to
+    # models/<species>/<pseudobulk>/ by train_cherimoya.py -- no subdir.
+    model_subdir = fine_tag if args.finetuned else ""
     if adapter_id is not None:
         suffix = f"_adapter_{adapter_id}"
         metrics_subdir = f"adapters/{adapter_id}"
@@ -72,9 +105,9 @@ def resolve_model_variant(args):
         result_tag = fine_tag
     else:
         suffix = ""
-        metrics_subdir = "chrombpnet"
-        predictions_subdir = "chrombpnet"
-        result_tag = "chrombpnet"
+        metrics_subdir = "cherimoya"
+        predictions_subdir = "cherimoya"
+        result_tag = "cherimoya"
 
     return {
         "fine_tag": fine_tag,

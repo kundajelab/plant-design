@@ -1,10 +1,10 @@
-"""Compute DeepLIFT/SHAP attributions for a trained BPNet model across all folds.
+"""Compute DeepLIFT/SHAP attributions for a trained Cherimoya model across all folds.
 
 Loads trained models for each fold, computes hypothetical attributions on all
-peaks genome-wide, averages across folds, and saves to attributions/bpnet/.
+peaks genome-wide, averages across folds, and saves to attributions/cherimoya/.
 
 Usage:
-    python src/bpnet/attribute/deepliftshap.py -p epidermis
+    uv run python src/cherimoya_pipeline/attribute/deepliftshap.py -p epidermis --head profile
 """
 
 import argparse
@@ -19,20 +19,26 @@ import torch
 from bpnetlite.attribute import deep_lift_shap
 from bpnetlite.bpnet import CountWrapper, ProfileWrapper
 from tangermeme.io import extract_loci
-from da_peaks import DA_PEAK_CHOICES, da_suffix, resolve_loci_path
+from da_peaks import (
+    DATASETS,
+    DA_PEAK_CHOICES,
+    da_suffix,
+    model_dir as dataset_model_dir,
+    resolve_loci_path,
+    validate_pseudobulk,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
-sys.path.insert(0, str(REPO_ROOT / "src" / "chrombpnet" / "benchmark"))
+sys.path.insert(0, str(REPO_ROOT / "src" / "cherimoya_pipeline" / "benchmark"))
 
-from daicon import (  # noqa: E402
-    iter_adapters,
-    load_accessibility_with_adapter,
+import species_config  # noqa: E402
+from daicon import iter_adapters  # noqa: E402
+from model_variants import (  # noqa: E402
+    add_model_variant_args,
+    load_cherimoya_with_adapter,
+    resolve_model_variant,
 )
-from model_variants import add_model_variant_args, resolve_model_variant  # noqa: E402
-
-CHROM_SPLITS_PATH = REPO_ROOT / "configs" / "chrom_splits.json"
-FASTA = str(REPO_ROOT / "data" / "Sbicolor_730_v5.0.fa")
 
 
 def assert_deeplift_shap_compatible(module):
@@ -51,21 +57,19 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
+    species_config.add_species_arg(parser)
     parser.add_argument(
         "-p",
         "--pseudobulk",
         type=str,
         required=True,
-        choices=["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"],
         help="The name of the pseudobulk to benchmark",
     )
     parser.add_argument(
-        "-m",
-        "--model-type",
-        type=str,
-        required=True,
-        choices=["bias", "accessibility"],
-        help="The name of the pseudobulk to benchmark",
+        "--dataset",
+        choices=DATASETS,
+        default="base",
+        help="Dataset namespace to use (default: base).",
     )
     parser.add_argument(
         "--head",
@@ -90,38 +94,36 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true")
     add_model_variant_args(
         parser,
-        finetuned_help="Use finetuned accessibility models instead of base torch/ models",
+        finetuned_help="Use finetuned models instead of the base model",
         adapter_help="Use default daicon adapter bundles for the selected DA fraction",
     )
     args = parser.parse_args()
+    species = species_config.resolve_species(args.species)
     variant = resolve_model_variant(args)
+    try:
+        validate_pseudobulk(species, args.dataset, args.pseudobulk)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
     fine_tag = variant["fine_tag"]
     model_subdir = variant["model_subdir"]
     adapter_id = variant["adapter_id"]
 
-    if args.finetuned and args.model_type == "bias":
+    if args.da_peaks is not None and args.dataset != "base":
         print(
-            "Error: bias model is not saved during finetuning (bias is frozen). "
-            "Use --model-type accessibility with --finetuned.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    if adapter_id is not None and args.model_type == "bias":
-        print(
-            "Error: adapters are only defined for the accessibility model. "
-            "Use --model-type accessibility with --adapter or --adapter-run-id.",
+            "Error: --da-peaks is currently only defined for --dataset base.",
             file=sys.stderr,
         )
         sys.exit(1)
 
     # Load chrom splits
-    with open(CHROM_SPLITS_PATH, "r") as f:
+    with open(species_config.config_dir(species) / "chrom_splits.json", "r") as f:
         chrom_splits = json.load(f)
     n_folds = len(chrom_splits)
 
     # Construct data paths and verify that they exist.
     if args.da_peaks is not None:
-        peaks_path = resolve_loci_path(REPO_ROOT, args.pseudobulk, args.da_peaks)
+        peaks_path = resolve_loci_path(species, args.pseudobulk, args.da_peaks)
         if not peaks_path.exists():
             print(
                 f"Error: {peaks_path.name} not found: {peaks_path}. "
@@ -130,25 +132,24 @@ def main():
             )
             sys.exit(1)
     else:
-        peaks_path = resolve_loci_path(REPO_ROOT, args.pseudobulk, None)
+        peaks_path = resolve_loci_path(
+            species, args.pseudobulk, None, dataset=args.dataset
+        )
         if not Path(peaks_path).exists():
             print(f"Error: peaks not found: {peaks_path}", file=sys.stderr)
             sys.exit(1)
 
     # Resolve model directory and verify that all models exist
-    model_dir = REPO_ROOT / "models" / args.pseudobulk / model_subdir
+    model_dir = dataset_model_dir(species, args.dataset, args.pseudobulk) / model_subdir
     model_paths = [
-        model_dir / f"{args.pseudobulk}_f{fold}.{args.model_type}.torch"
-        for fold in range(n_folds)
+        model_dir / f"{args.pseudobulk}_f{fold}.torch" for fold in range(n_folds)
     ]
     for model_path in model_paths:
         if not model_path.exists():
             print(f"Error: model not found: {model_path}", file=sys.stderr)
             sys.exit(1)
     adapter_paths = [
-        REPO_ROOT
-        / "models"
-        / args.pseudobulk
+        dataset_model_dir(species, args.dataset, args.pseudobulk)
         / "adapters"
         / adapter_id
         / f"{args.pseudobulk}_f{fold}.adapter.pt"
@@ -161,7 +162,7 @@ def main():
 
     # Build params with defaults, then apply CLI overrides
     params = {
-        "sequences": FASTA,
+        "sequences": str(species_config.genome_fasta(species)),
         "loci": str(peaks_path),
         "in_window": 2114,
         "batch_size": 64,
@@ -187,16 +188,12 @@ def main():
     attributions = []
     for fold in range(n_folds):
         # Load model
-        if adapter_id is None:
-            model = torch.load(
-                model_paths[fold], weights_only=False, map_location=torch.device("cpu")
-            )
-        else:
-            model, _manifest = load_accessibility_with_adapter(
-                model_paths[fold],
-                adapter_paths[fold],
-                map_location=torch.device("cpu"),
-            )
+        model, _manifest = load_cherimoya_with_adapter(
+            model_paths[fold],
+            adapter_paths[fold],
+            device="cpu",
+        )
+        if adapter_id is not None:
             model.eval()
             assert_deeplift_shap_compatible(model)
         if args.head == "profile":
@@ -221,16 +218,16 @@ def main():
 
     # Output directory
     if adapter_id is not None:
-        out_subdir = f"chrombpnet_adapter_{adapter_id}"
+        base_subdir = f"cherimoya_adapter_{adapter_id}"
     else:
-        out_subdir = f"chrombpnet_{fine_tag}" if args.finetuned else "chrombpnet"
-    out_dir = REPO_ROOT / "attributions" / out_subdir
+        base_subdir = f"cherimoya_{fine_tag}" if args.finetuned else "cherimoya"
+    out_subdir = base_subdir if args.dataset == "base" else f"{base_subdir}_{args.dataset}"
+    out_dir = species_config.attributions_dir(species) / out_subdir
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Save attributions
     out_path = (
-        out_dir
-        / f"{args.pseudobulk}_{args.model_type}_{args.head}{da_suffix(args.da_peaks)}.npz"
+        out_dir / f"{args.pseudobulk}_{args.head}{da_suffix(args.da_peaks)}.npz"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(out_path, np.stack(attributions).mean(axis=0))

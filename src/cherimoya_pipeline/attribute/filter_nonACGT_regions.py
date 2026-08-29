@@ -15,7 +15,7 @@ import argparse
 
 import numpy as np
 import pandas as pd
-import pyfastx
+import pyfaidx
 import tqdm
 
 
@@ -30,7 +30,7 @@ def filter_nonACGT_regions(bed_fp, fa_fp, in_window=2114, verbose=False):
     bed_fp : str
         Path to input BED file.
     fa_fp : str
-        Path to reference FASTA file (indexed by pyfastx).
+        Path to reference FASTA file.
     in_window : int, optional
         Sequence length to extract centered on each region midpoint. Default 2114.
     verbose : bool, optional
@@ -42,18 +42,18 @@ def filter_nonACGT_regions(bed_fp, fa_fp, in_window=2114, verbose=False):
         Filtered BED as a DataFrame (rows passing all checks).
     """
     snp_bed = pd.read_csv(bed_fp, sep="\t", header=None)
-    fa = pyfastx.Fasta(fa_fp)
-    chroms = [rec.name for rec in fa]
+    fa = pyfaidx.Fasta(fa_fp)
+    chroms = set(fa.keys())
     wholesome = []
     for row in tqdm.tqdm(
         snp_bed.itertuples(), total=snp_bed.shape[0], disable=not verbose
     ):
         chrom = str(row[1])
-        center = (row[2] + row[3]) // 2 + 1  # pyfastx is 1-based
-        start = max(0, center - in_window // 2)
-        end = center + in_window // 2 - 1  # pyfastx includes the end
-        if chrom in chroms:
-            seq = fa.fetch(chrom, (start, end)).upper()
+        center = (row[2] + row[3]) // 2
+        start = center - in_window // 2
+        end = start + in_window
+        if chrom in chroms and start >= 0:
+            seq = str(fa[chrom][start:end]).upper()
             is_wholesome = all([c in "ACGT" for c in seq]) and len(seq) == in_window
         else:
             is_wholesome = False

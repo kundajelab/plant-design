@@ -3,7 +3,7 @@ Generates pairwise counts correlations in union of all peak regions
 across all pseudobulks
 
 Usage:
-    python src/chrombpnet/benchmark/pairwise_correlations.py
+    uv run python src/chrombpnet/benchmark/pairwise_correlations.py
 """
 
 import json

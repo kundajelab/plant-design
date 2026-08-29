@@ -45,7 +45,7 @@ def load_summary(path):
     if not path.exists():
         print(f"Error: summary CSV not found: {path}", file=sys.stderr)
         print(
-            "Run: python src/chrombpnet/benchmark/plot_lora_sweep.py --summary-only",
+            "Run: uv run python src/chrombpnet/benchmark/plot_lora_sweep.py --summary-only",
             file=sys.stderr,
         )
         sys.exit(1)

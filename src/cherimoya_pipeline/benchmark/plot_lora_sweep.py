@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-BENCHMARK_DIR = REPO_ROOT / "src" / "chrombpnet" / "benchmark"
+BENCHMARK_DIR = REPO_ROOT / "src" / "cherimoya_pipeline" / "benchmark"
 PSEUDOBULKS = ["bundle_sheath", "epidermis", "guard", "mesophyll", "phloem", "xylem"]
 REFERENCE_MODELS = {
     "base": {
@@ -414,6 +414,8 @@ def write_summary_and_plots(args, sweep_ids):
             run_command(
                 " ".join(
                     [
+                        "uv",
+                        "run",
                         "python",
                         str(BENCHMARK_DIR / "plot_celltype_scatter.py"),
                         "--adapter-sweep-id",
