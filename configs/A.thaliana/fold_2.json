@@ -1,0 +1,13 @@
+{
+    "test": [
+        "chr3"
+    ],
+    "valid": [
+        "chr4"
+    ],
+    "train": [
+        "chr1",
+        "chr2",
+        "chr5"
+    ]
+}
