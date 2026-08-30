@@ -114,6 +114,27 @@ DeepLIFT/SHAP attribution pipeline (model-agnostic `bpnetlite`/`tangermeme` mach
 - **`cherimoya.def`**: Apptainer definition bootstrapping from `pytorch/pytorch:2.13.0-cuda12.6-cudnn9-runtime` and pip-installing Cherimoya plus every non-torch dependency (including `modisco`/tf-modisco-lite) `--no-deps` on top of the base image's own torch build. Built into a `.sif` and run via `apptainer exec --nv`, this is the default execution path for every launcher above -- sidesteps Sherlock's old system toolchain, which can't reliably build/resolve `torch>=2.9`/`triton>=3.5.1` directly.
 - **`check_gpu.py`**: Submits one short per-GPU-SKU SLURM job that loads the image and moves a tensor onto the GPU, since Sherlock has no way to query driver/CUDA compatibility ahead of time.
 
+**The image actually used for training is defined outside this repo**, at
+[`adamyhe/sherlock`](https://github.com/adamyhe/sherlock) (`cherimoya/cherimoya.def`); the in-repo
+`cherimoya.def` above is a separate, divergent definition. Launchers resolve the image purely by
+path (`$CHERIMOYA_APPTAINER_IMAGE`, default `/scratch/users/$USER/apptainer/cherimoya.sif`), so
+they use whichever image is built there regardless of which definition produced it. Two
+consequences worth knowing:
+
+- **`daicon` is deliberately not installed in the production image.** `attribute/deepliftshap.py`
+  and `da_finetuning/finetune_da.py` import it at module top level, so both fail immediately
+  (`ModuleNotFoundError`) under `apptainer exec` against that image -- run them in the
+  `plant-design` uv env (`uv sync --extra cherimoya`, where `daicon` is a base dependency)
+  instead. `benchmark/benchmark.py` is unaffected: its `daicon` import is lazy, inside
+  `model_variants.load_cherimoya_with_adapter()`, so only `--adapter` runs need it. This is the
+  intended split -- models are trained in the Apptainer image on Sherlock, and DA finetuning /
+  attribution run in the uv env on the lab cluster.
+- **The production image installs Cherimoya from a git commit, not PyPI.** That commit is
+  upstream's v0.2.1, which was never released to PyPI (PyPI stops at 0.2.0), so the `cherimoya`
+  uv extra pins the same commit to keep the two environments on identical code -- see the comment
+  on that extra in `pyproject.toml`.
+
+
 ### `src/data_preprocessing/`
 
 - **`make_bigwigs.sh`**: Resolves paths and prints one `bam2bw -f` command per pseudobulk (both Tn5 insertion sites per fragment) to stdout -- pipe into `parallel`/`simple_gpu_scheduler` to run. This repo's checkout lives directly on Oak, so by default fragments/genome are read straight out of `data/<species>/fragments{_fine,_coarse}/` and `data/<species>/` -- no separate absolute Oak path needed (override via `DATA_DIR`/`REF_DIR` for sources living elsewhere). Species-aware via `$SPECIES` (default `S.bicolor`) and dataset-aware via `$DATASET` (`base`/`fine`/`coarse`, default `base`). Outputs to `data/<species>/bigwigs{_fine,_coarse}/`.

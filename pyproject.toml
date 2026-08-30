@@ -19,23 +19,6 @@ dependencies = [
     "numpy",
     "pandas",
     "pillow",
-    # 0.2.5's `values()` only supports summary={mean,min,max}; tangermeme's
-    # GC-matched negative sampling (extract_matching_loci -> _extract_counts)
-    # calls it with summary="sum", which raises ValueError there, gets
-    # silently swallowed into NaN for every locus, and empties out the
-    # matched-loci result. summary="sum" was added in 0.3.0 -- but every
-    # pybigtools release through 0.3.0 only ships manylinux_2_28 wheels (no
-    # older-glibc wheel at any version), so on Sherlock's older glibc both
-    # versions fall back to a source build regardless; 0.3.0's build
-    # specifically fails there (same class of issue as the sibling
-    # procap-atlas project's identical pin, and as the cherimoya/sherlock
-    # torch split above), while 0.2.5's still succeeds. Pinned back to
-    # 0.2.5 here since it no longer needs to satisfy the summary="sum" fix:
-    # negative sampling (`cherimoya negatives`, via fit/negatives.py) always
-    # runs inside the Apptainer image now (src/cherimoya_pipeline/apptainer/
-    # cherimoya.def), which pip-installs its own unpinned (implicitly
-    # >=0.3.0) pybigtools independently of this base env.
-    "pybigtools==0.2.5",
     "pyfaidx",
     "pyyaml",
     "scikit-learn",
@@ -55,7 +38,29 @@ hub = ["huggingface-hub"]
 # of unifying bpnet-lite/daicon/tangermeme/ledidi's own unconstrained
 # "torch" dependency with whichever extra's constraint into one version.
 #
-# cherimoya>=0.2.0 requires torch>=2.9 and triton>=3.5.1; triton has no
+# pybigtools is split across the same two extras, for the same structural
+# reason: a base requirement is intersected into every resolution fork, so
+# an extra can only narrow it, never widen or override it. Pinning 0.2.5 in
+# the sherlock extra while leaving pybigtools unconstrained in base does not
+# work -- both constraints are satisfiable by 0.2.5, so uv skips the fork and
+# unifies on 0.2.5 everywhere, including under --extra cherimoya. Tightening
+# base to >=0.3.0 to force the fork makes the lock unsatisfiable outright.
+# Keep pybigtools out of base and constrained in each extra instead.
+#
+# cherimoya is pinned to the exact commit the production Sherlock Apptainer
+# image installs (github.com/adamyhe/sherlock, cherimoya/cherimoya.def), so
+# models trained in that image and finetuned in this env run identical code.
+# That commit is upstream's v0.2.1 release, which was never published to
+# PyPI -- PyPI tops out at 0.2.0, so `cherimoya>=0.2.0` silently resolves to
+# older code than the image. Pinned by commit rather than the v0.2.1 tag
+# because upstream has force-moved a release tag before. Diff vs PyPI 0.2.0
+# is small and does not touch checkpoints: cherimoya/cherimoya.py (model,
+# training loop, EMA, checkpoint selection, save/load) is byte-identical;
+# only cherimoya_cli/commands/attribute.py (an index-alignment fix for loci
+# dropped near chromosome ends) and __init__.py (adds __version__) change.
+# Note this makes `uv sync` need git + network access to GitHub.
+#
+# cherimoya requires torch>=2.9 and triton>=3.5.1; triton has no
 # macOS wheels at all (Linux/CUDA-only compiler toolchain), so this extra
 # is Linux-only. Its torch>=2.9 also needs newer CUDA than Sherlock's
 # driver supports -- install this extra on a GPU machine whose driver
@@ -63,7 +68,15 @@ hub = ["huggingface-hub"]
 # `uv sync --frozen --extra cherimoya`. Apptainer bypasses this extra
 # entirely on Sherlock (src/cherimoya_pipeline/apptainer/).
 cherimoya = [
-    "cherimoya>=0.2.0; sys_platform == 'linux'",
+    # pybigtools 0.2.5's `values()` only supports summary={mean,min,max};
+    # tangermeme's GC-matched negative sampling (extract_matching_loci ->
+    # _extract_counts) calls it with summary="sum", added in 0.3.0. On 0.2.5
+    # that ValueError gets silently swallowed into NaN for every locus and
+    # empties out the matched-loci result, so `cherimoya negatives` (via
+    # fit/negatives.py) produces nothing. This extra is the env that actually
+    # runs negatives outside Apptainer, so it needs >=0.3.0.
+    "pybigtools>=0.3.0",
+    "cherimoya @ git+https://github.com/jmschrei/cherimoya.git@8e4283fe56db4a29418c1d8119da3240d7c709ba ; sys_platform == 'linux'",
     "torch>=2.9.0; sys_platform == 'linux'",
 ]
 # The torch every other platform/use case gets: capped at 2.6.0 on Linux
@@ -75,6 +88,17 @@ cherimoya = [
 # wants to run bpnet-lite/daicon/tangermeme for real on Sherlock, outside
 # the Apptainer image.
 sherlock = [
+    # Every pybigtools release through 0.3.0 ships manylinux_2_28 wheels only
+    # (no older-glibc wheel at any version), so on Sherlock's older glibc it
+    # always falls back to a source build: 0.3.0's fails there, 0.2.5's still
+    # succeeds (same class of issue as the sibling procap-atlas project's
+    # identical pin). Giving up the summary="sum" fix is fine here because
+    # negative sampling on Sherlock runs inside the Apptainer image, which
+    # pip-installs its own unpinned pybigtools (apptainer/cherimoya.def),
+    # never against this extra. NB: a bare `uv sync` with no extras resolves
+    # pybigtools to 0.3.0 and so hits that failing build on Sherlock -- use
+    # `--extra sherlock` there even for the launcher-only workflow.
+    "pybigtools==0.2.5",
     "torch<=2.6.0; sys_platform == 'linux'",
     "torch; sys_platform != 'linux'",
 ]
@@ -94,9 +118,10 @@ exclude-dependencies = ["macs3"]
 required-environments = [
     "sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
-# sherlock's torch<=2.6.0 pin and cherimoya's real torch>=2.9.0 requirement
-# are never installed together, so let uv resolve them independently
-# instead of forcing one universal torch version across both.
+# sherlock's torch<=2.6.0/pybigtools==0.2.5 pins and cherimoya's real
+# torch>=2.9.0/pybigtools>=0.3.0 requirements are never installed together,
+# so let uv resolve them independently instead of forcing one universal
+# version of each across both.
 conflicts = [[{ extra = "sherlock" }, { extra = "cherimoya" }]]
 
 [tool.setuptools]
